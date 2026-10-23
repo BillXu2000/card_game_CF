@@ -104,3 +104,77 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
   border: 3px solid #fff; outline: 1px solid #555;
 }
 @media (max-width: 600px) { :root { --card-w: 44px; --card-h: 64px; } .card .corner { font-size: 12px; } .card .pip { font-size: 20px; } }
+
+/* ---------------------------------------------------------------- hearts */
+.game.hearts { padding: 0 8px 16px; }
+.felt {
+  position: relative; margin: 0 auto; max-width: 980px; min-height: 620px;
+  background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+  border-radius: 14px; border: 6px solid #6b4423; color: #fff;
+  display: grid; gap: 8px; padding: 10px;
+  grid-template-columns: minmax(90px, 1fr) minmax(260px, 2fr) minmax(90px, 1fr);
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas: "tl top tr" "left trick right" "status status status" "bottom bottom bottom";
+}
+.hp { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 10px; min-width: 0; }
+.hp.turn { background: rgba(255, 230, 120, .18); box-shadow: 0 0 0 2px #ffd84a inset; }
+.hp-top { grid-area: top; }
+.hp-left { grid-area: left; align-self: center; }
+.hp-right { grid-area: right; align-self: center; }
+.hp-bottom { grid-area: tl; align-self: start; align-items: flex-start; }
+.hp-name { font-weight: 700; text-shadow: 0 1px 1px #000; }
+.hp-score { font-size: 13px; opacity: .9; }
+.hp-note { font-size: 12px; opacity: .8; }
+.hp-backs { display: flex; justify-content: center; }
+.hp-backs .card { --card-w: 34px; --card-h: 48px; width: 34px; height: 48px; margin-left: -24px; border-width: 2px; }
+.hp-backs .card:first-child { margin-left: 0; }
+.hp-left .hp-backs, .hp-right .hp-backs { flex-direction: column; }
+.hp-left .hp-backs .card, .hp-right .hp-backs .card { margin-left: 0; margin-top: -38px; }
+.hp-left .hp-backs .card:first-child, .hp-right .hp-backs .card:first-child { margin-top: 0; }
+.hp-points { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; max-width: 180px; }
+.mini { background: #fff; color: #111; border-radius: 3px; font-size: 11px; padding: 0 3px; font-weight: 700; }
+.mini.red { color: #d01818; }
+
+.trick { grid-area: trick; position: relative; min-height: 260px; }
+.trick .card { position: absolute; left: 50%; top: 50%; }
+.trick .t-bottom { transform: translate(-50%, -10%); }
+.trick .t-top { transform: translate(-50%, -90%); }
+.trick .t-left { transform: translate(-125%, -50%); }
+.trick .t-right { transform: translate(25%, -50%); }
+.trick .card.dim { opacity: .55; }
+.trick .card.won { box-shadow: 0 0 0 3px #ffd84a; }
+.trick-note { position: absolute; bottom: 0; width: 100%; text-align: center; font-size: 13px; opacity: .9; }
+
+.status { grid-area: status; text-align: center; font-weight: 600; text-shadow: 0 1px 1px #000; min-height: 1.4em; }
+.bottom { grid-area: bottom; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.my-hand { display: flex; justify-content: center; padding-top: 18px; max-width: 100%; }
+.my-hand .card { margin-left: calc(var(--card-w) * -0.55); transition: transform .1s; }
+.my-hand .card:first-child { margin-left: 0; }
+.my-hand .card.clickable { cursor: pointer; }
+.my-hand .card.clickable:hover { transform: translateY(-8px); }
+.my-hand .card.selected { transform: translateY(-18px); }
+.my-hand .card.received { box-shadow: 0 0 0 3px #7fd3ff; }
+.my-hand .card.dim { filter: brightness(.7); }
+
+.score-sheet {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+  background: #fff; color: var(--text); border-radius: 10px; padding: 14px 18px; box-shadow: 0 6px 30px rgba(0,0,0,.5);
+  max-height: 90%; overflow: auto; max-width: calc(100% - 20px);
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+}
+.score-sheet h3 { margin: 0; }
+.score-sheet table { border-collapse: collapse; }
+.score-sheet td { padding: 3px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.score-sheet thead td { font-weight: 700; }
+.score-sheet tfoot td { font-weight: 700; }
+.score-sheet .leader { color: var(--accent); }
+.score-sheet .winner { color: var(--danger); }
+
+@media (max-width: 600px) {
+  .bar { gap: 6px; padding: 8px 10px; }
+  .bar button { padding: 3px 8px; font-size: 13px; }
+  .bar h2 { font-size: 15px; }
+  .felt { min-height: 520px; grid-template-columns: 70px 1fr 70px; padding: 6px; }
+  .trick { min-height: 200px; }
+  .hp-score { font-size: 11px; }
+}
