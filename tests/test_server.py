@@ -149,3 +149,25 @@ async def test_rooms_survive_restart(tmp_path):
         assert r["status"] == "playing" and r["view"]["seq"] >= seq and r["my_seat"] == 0
     finally:
         await client2.close()
+
+
+async def test_import_rejects_broken_game_data(tmp_path):
+    server, client = await make_client(tmp_path)
+    try:
+        amy, _ = await connect(client, "amy")
+        await amy.send(op="create", game="duel")
+        code = (await amy.expect("room"))["room"]["code"]
+        await amy.send(op="seat", code=code, seat=1, mode="ai")
+        await amy.expect("room", pred=lambda m: m["room"]["seats"][1]["ai"])
+        await amy.send(op="start", code=code)
+        await amy.expect("room", pred=lambda m: m["room"]["status"] == "playing")
+        await amy.send(op="export", code=code)
+        state = (await amy.expect("export"))["state"]
+        del state["vars"]["round"]
+        await amy.send(op="import", code=code, state=state)
+        assert "无效" in (await amy.expect("error"))["message"]
+        # restarting a running game is allowed for the host
+        await amy.send(op="start", code=code)
+        await amy.expect("room", pred=lambda m: m["room"]["history_len"] == 1)
+    finally:
+        await client.close()

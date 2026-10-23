@@ -67,7 +67,7 @@ export function render(el, ctx) {
   const trick = view.zones.trick.cards;
   let shown = trick.map((id, k) => [v.trick_seats[k], id]);
   let finished = false;
-  if (!trick.length && v.last_trick && v.phase === "play") {
+  if (!trick.length && v.last_trick && v.phase !== "pass") {
     shown = v.last_trick.seats.map((s, k) => [s, v.last_trick.cards[k]]);
     finished = true;
   }

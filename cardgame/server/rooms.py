@@ -282,10 +282,9 @@ class RoomManager:
     def start(self, user: str, code: object) -> Room:
         room = self.get(code)
         self._require_host(room, user)
-        if room.status == "playing":
-            raise RoomError("游戏已在进行")
         if any(s.empty for s in room.seats):
             raise RoomError("还有空座位（可以设为 AI）")
+        self._cancel_ai(room)
         room.state = room.game.new_state(len(room.seats), room.options, seed=random.getrandbits(64))
         room.history = []
         self.storage.delete(self._hist_path(room.code))
@@ -327,9 +326,15 @@ class RoomManager:
             raise RoomError("JSON 属于另一种游戏")
         if st.num_players != len(room.seats):
             raise RoomError(f"JSON 需要 {st.num_players} 个座位")
+        try:
+            room.game.prompts(st)
+            for seat in [None, *range(st.num_players)]:
+                room.game.view(st, seat)
+        except Exception as e:
+            raise RoomError(f"JSON 中的游戏数据无效：{e!r}") from None
+        self._cancel_ai(room)
         room.state = st
         self._record(room, "导入")
-        self._cancel_ai(room)
         self._changed(room)
         self._schedule_ai(room)
         return room
