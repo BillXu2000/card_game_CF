@@ -16,7 +16,8 @@ def get_game(game_id: str) -> Game:
 
 
 def _load_builtin() -> None:
-    pass
+    from .hearts import Hearts
+    register(Hearts())
 
 
 _load_builtin()
