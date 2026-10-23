@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡牌游戏</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div id="conn" class="conn hidden">连接中…</div>
+
+<section id="login" class="screen hidden">
+  <form id="login-form" class="panel login-box">
+    <h1>卡牌游戏</h1>
+    <label>用户名 <input id="login-name" maxlength="16" autocomplete="username" required></label>
+    <label>密码 <input id="login-pass" type="password" autocomplete="current-password" placeholder="新用户可留空"></label>
+    <p class="hint">首次使用的用户名会被注册，此时输入的密码（可为空）即为该用户的密码。</p>
+    <button type="submit">登录</button>
+  </form>
+</section>
+
+<section id="lobby" class="screen hidden">
+  <header class="bar">
+    <h2>大厅</h2>
+    <span class="spacer"></span>
+    <span id="lobby-user"></span>
+    <button id="logout" class="ghost">退出登录</button>
+  </header>
+  <div class="lobby-grid">
+    <div class="panel">
+      <h3>创建房间</h3>
+      <div class="row">
+        <select id="create-game"></select>
+        <select id="create-players"></select>
+        <button id="create">创建</button>
+      </div>
+      <h3>加入房间</h3>
+      <form id="join-form" class="row">
+        <input id="join-code" maxlength="4" placeholder="房号（4 位字母）" autocomplete="off">
+        <button type="submit">加入</button>
+      </form>
+    </div>
+    <div class="panel">
+      <h3>房间列表</h3>
+      <table class="rooms"><thead><tr><th>房号</th><th>游戏</th><th>房主</th><th>玩家</th><th>状态</th><th></th></tr></thead>
+        <tbody id="room-list"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<section id="room" class="screen hidden">
+  <header class="bar">
+    <button id="room-back" class="ghost">← 大厅</button>
+    <h2 id="room-title"></h2>
+    <span id="room-status" class="tag"></span>
+    <span class="spacer"></span>
+    <span id="host-tools" class="row">
+      <button id="btn-start">开始游戏</button>
+      <button id="btn-history" class="ghost">回退…</button>
+      <button id="btn-export" class="ghost">导出 JSON</button>
+      <button id="btn-import" class="ghost">导入 JSON</button>
+      <button id="btn-close" class="ghost danger">关闭房间</button>
+    </span>
+    <button id="room-leave" class="ghost">离开房间</button>
+  </header>
+  <div id="seats" class="seats"></div>
+  <div id="game" class="game"></div>
+</section>
+
+<dialog id="history-dlg">
+  <h3>回退到历史状态</h3>
+  <div id="history-list" class="history-list"></div>
+  <form method="dialog"><button>关闭</button></form>
+</dialog>
+
+<input id="import-file" type="file" accept=".json,application/json" class="hidden">
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
