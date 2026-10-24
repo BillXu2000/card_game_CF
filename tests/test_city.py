@@ -389,3 +389,16 @@ def test_china_map_matches_game_data():
     # every city lies inside the main view
     x, y, w, h = m["views"]["main"]
     assert all(x < cx < x + w and y < cy < y + h for cx, cy in m["cities"].values())
+
+
+def test_migrate_state_from_blocking_dianpao_version():
+    st = setup(hands={0: ["北京"], 1: ["天津"]})
+    d = st.to_dict()
+    # what the previous version saved: no offers, a blocking 点炮 phase
+    del d["vars"]["offers"], d["vars"]["next_offer"]
+    d["vars"]["phase"] = "dianpao"
+    d["vars"]["pending"] = {"by": 0, "cards": [], "eligible": [1], "resume": "main"}
+    d["private"][1]["dianpao_choice"] = []
+    old = G.migrate(GameState.from_dict(d))
+    assert old.vars["phase"] == "main" and old.vars["offers"] == [] and "pending" not in old.vars
+    assert G.prompts(old)[0]["type"] == "main"

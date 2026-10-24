@@ -80,6 +80,10 @@ class Game:
     def view(self, st: GameState, seat: int | None) -> dict:
         return st.view(seat)
 
+    def migrate(self, st: GameState) -> GameState:
+        """Bring a state saved by an older version of the rules up to date."""
+        return st
+
     def static_info(self) -> dict:
         """Constant game data the client needs (e.g. reference tables)."""
         return {}

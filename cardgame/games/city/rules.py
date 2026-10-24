@@ -558,6 +558,19 @@ class CityExchange(Game):
         from .ai import CityAI
         return CityAI()
 
+    def migrate(self, st: GameState) -> GameState:
+        v = st.vars
+        if "offers" not in v:
+            # before 点炮 offers existed, a discard opened a blocking "dianpao" phase
+            pending = v.pop("pending", None)
+            if v.get("phase") == "dianpao":
+                v["phase"] = (pending or {}).get("resume", "main")
+            for p in st.private:
+                p.pop("dianpao_choice", None)
+            v["offers"] = []
+            v["next_offer"] = 0
+        return st
+
     def static_info(self) -> dict:
         return {
             "provinces": PROVINCES,
