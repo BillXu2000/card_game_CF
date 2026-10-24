@@ -14,8 +14,8 @@ const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口�
 const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
 const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
 const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
-// hammers sit half an icon (16.7 x 17.7 units) to the lower right of the city
-const HAMMER_SHIFT = [8.4, 8.9];
+// hammers sit a little to the lower right of the city (units of the symbol group)
+const HAMMER_SHIFT = [5, 5];
 
 // a city with special icons is drawn as those icons (stacked when there are two)
 function iconsOf(city) {
