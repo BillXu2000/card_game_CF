@@ -315,6 +315,7 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-lake.on { fill: #ffe27a; stroke: #c98c00; stroke-width: 2; }
 .cm-river { fill: none; stroke: #3a8fc7; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .cm-river.on { stroke: #0a5fd8; stroke-width: 4; }
+.cm-river.yellow { stroke-width: 1.3; }
 .cm-rail path { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .cm-rail .under { stroke: #222; stroke-width: 3.2; }
 .cm-rail .over { stroke: #fff; stroke-width: 1.6; stroke-dasharray: 5 5; }
@@ -340,9 +341,18 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .sym-pref-dot { fill: #222; }
 .sym-port { font-size: 11px; fill: #1f6fb0; }
 .cm-svg.ports-on .sym-port { font-size: 15px; fill: #c0392b; }
-.cm-label { font-size: 12px; font-weight: 700; fill: #222; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
-.cm-label.held { fill: #0a5fd8; }
-.cm-label.tiny { font-size: 10px; }
+/* city names only on hover */
+.cm-label { font-size: 12px; font-weight: 700; fill: #222; paint-order: stroke; stroke: #fff; stroke-width: 3px;
+  stroke-linejoin: round; opacity: 0; pointer-events: none; }
+.cm-city { cursor: default; }
+.cm-city:hover .cm-label { opacity: 1; }
+.cm-city:hover .halo { opacity: .6; }
+/* cities in your hand: symbol filled with the province colour */
+.cm-city.held .sym-capital-ring, .cm-city.held .sym-prov-outer, .cm-city.held .sym-pref { fill: var(--pv); }
+.cm-city.held .sym-capital, .cm-city.held .sym-prov-inner, .cm-city.held .sym-pref-dot { fill: #fff; }
+.sym-fire .outer { fill: #e8590c; } .sym-fire .inner { fill: #ffd43b; }
+.sym-hammer .handle { fill: #8a5a2b; } .sym-hammer .head { fill: #5c6670; }
+.cm-svg.fire-on .sym-fire, .cm-svg.hammer-on .sym-hammer { transform-box: fill-box; transform-origin: center; scale: 1.6; }
 
 .cm-features { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* fixed height: a caption that grows would move the buttons under the mouse */
