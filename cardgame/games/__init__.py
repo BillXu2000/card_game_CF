@@ -18,8 +18,10 @@ def get_game(game_id: str) -> Game:
 def _load_builtin() -> None:
     from .city.rules import CityExchange
     from .hearts import Hearts
+    from .liar import Liar
     register(Hearts())
     register(CityExchange())
+    register(Liar())
 
 
 _load_builtin()

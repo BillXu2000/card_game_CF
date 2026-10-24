@@ -216,6 +216,65 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
   .hp-score { font-size: 11px; }
 }
 
+/* -------------------------------------------------------------- 骗人游戏 */
+.game.liar { display: flex; flex-direction: column; gap: 12px; padding: 0 8px 16px; }
+.felt.lg-table { display: flex; flex-direction: column; gap: 12px; min-height: 560px; max-width: 1100px; width: 100%; }
+.lg-seats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.lg-seat {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-radius: 10px; min-width: 120px; max-width: 260px;
+  background: rgba(0, 0, 0, .18);
+}
+.lg-seat.turn { background: rgba(255, 230, 120, .18); box-shadow: 0 0 0 2px #ffd84a inset; }
+.lg-seat.out { opacity: .6; }
+.lg-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.lg-name { font-weight: 700; text-shadow: 0 1px 1px #000; }
+.lg-tag { font-size: 12px; padding: 0 6px; border-radius: 8px; background: rgba(255, 255, 255, .2); }
+.lg-tag.gold { background: #f5b301; color: #222; font-weight: 700; }
+.lg-backs { display: flex; flex-wrap: wrap; padding-right: 12px; row-gap: 3px; }
+.lg-backs > * { margin-right: -12px; }
+.card.lg-mini { width: 22px; height: 30px; border-width: 2px; }
+.lg-mini-face { width: 22px; height: 30px; border-radius: 3px; background: #fff; color: #111; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; border: 1px solid #555; }
+.lg-mini-face.red { color: #d01818; }
+.lg-count { font-size: 12px; opacity: .85; }
+
+.lg-mid { display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; flex: 1; }
+.lg-centre { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 260px; }
+.lg-x-label { font-size: 13px; opacity: .85; }
+.lg-x { font-size: 56px; font-weight: 800; line-height: 1; color: #ffe27a; text-shadow: 0 2px 4px rgba(0, 0, 0, .5); }
+.lg-x.small { font-size: 22px; }
+.lg-claims { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 420px; }
+.lg-claim { font-size: 12px; padding: 1px 6px; border-radius: 8px; background: rgba(0, 0, 0, .3); }
+.lg-claim.last { background: #ffe27a; color: #222; font-weight: 700; }
+.lg-label { font-size: 13px; }
+.lg-claim-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 520px; padding-top: 10px; }
+.lg-claim-cards .card.pick { cursor: pointer; outline: 2px dashed #ffd84a; outline-offset: 2px; }
+.lg-claim-cards .card.picked { transform: translateY(-10px); outline: 3px solid #ff9f1a; }
+.lg-claim-cards .card.fake { box-shadow: 0 0 0 3px #e74c3c; }
+.lg-result { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 10px; background: rgba(0, 0, 0, .3); }
+.lg-result-title { font-weight: 700; }
+.lg-piles { display: flex; gap: 16px; }
+.card.joker .corner { font-size: 10px; line-height: 1.05; }
+.card.joker .pip { font-size: 28px; }
+
+.lg-mine { align-items: stretch; }
+.lg-me { align-self: center; flex-direction: row; align-items: center; gap: 10px; max-width: none; }
+.my-hand.lg-hand { flex-wrap: wrap; row-gap: 12px; padding-left: calc(var(--card-w) * 0.55); }
+.my-hand.lg-hand .card, .my-hand.lg-hand .card:first-child { margin-left: calc(var(--card-w) * -0.55); }
+.my-hand.lg-hand .card.match { box-shadow: 0 0 0 2px #ffd84a; }
+.lg-empty { opacity: .8; }
+.lg-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+.lg-actions button { box-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+.lg-actions button.ghost { background: #fff; }
+.lg-actions button.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+.lg-ranks { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.lg-ranks button { padding: 3px 8px; min-width: 40px; }
+.lg-ranks button.on { background: #f5b301; border-color: #f5b301; color: #222; font-weight: 700; }
+.lg-hint { width: 100%; text-align: center; font-size: 13px; color: #ffe27a; }
+.lg-below { max-width: 1100px; width: 100%; margin: 0 auto; }
+.lg-below summary { cursor: pointer; font-weight: 600; }
+.lg-log-list { max-height: 300px; overflow: auto; font-size: 13px; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+
 /* -------------------------------------------------------- city exchange */
 .pv-m { --pv: #c0392b; } .pv-js { --pv: #2471a3; } .pv-hb { --pv: #1e8449; } .pv-sc { --pv: #b9770e; } .pv-gd { --pv: #7d3c98; }
 .game.city { display: flex; flex-direction: column; gap: 12px; padding: 0 8px 16px; }

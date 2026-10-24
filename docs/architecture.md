@@ -65,7 +65,7 @@ make_ai() -> AI               # AI.choose(view, prompt) -> action，只拿到遮
 
 原生 ES 模块，无构建步骤。`main.js` 负责连接、登录、大厅、房间外框（座位、房主工具）。牌桌由 `games/<游戏id>.js` 的 `render(el, ctx)` 绘制，没有专门渲染器的游戏用 `generic.js`（列出所有牌区、变量、提示，可发送原始动作）。
 
-## 4. 两种游戏如何映射到底层
+## 4. 各游戏如何映射到底层
 
 ### 红心大战
 
@@ -91,3 +91,13 @@ make_ai() -> AI               # AI.choose(view, prompt) -> action，只拿到遮
 | 出游 | `tour` 阶段，按顺序逐人提示“弃一张手牌或付 6 元” |
 | 斗地主 | 农民共用弃牌区（一个 `discard:farmers` 牌区）；背面交牌 = 移到对方手牌并对自己保持 known |
 | 角色技能 | 规则模块内的钩子（兑现前后、弃牌后、回合开始/结束），技能状态存在 `vars` |
+
+### 骗人游戏（`games/liar`）
+
+| 规则元素 | 用法 |
+|---|---|
+| 牌 | 每副 52 张 `{"suit","rank"}` 加王 `{"joker": true, "color"}` |
+| 牌区 | `deck`(hidden，只用于发牌)、`hand:i`(owner)、`claim`(hidden，最新声明的牌)、`table`(hidden，本轮更早的牌)、`discard`(hidden) |
+| 打出的牌 | 进 `claim` 时打乱顺序，清除所有人的 known，只对出牌者保持 known（背面混在一起后谁也认不出来） |
+| 质疑 | 翻开的牌对所有人 known；`claim`+`table` 全部移到输家手里 |
+| vars | 阶段（`lead` 定数字并出牌 / `play` / `over`）、轮数、x、轮到谁、本轮各人是否 pass、本轮声明列表、出完顺序、上一轮怎么结束的（给界面展示） |
