@@ -4,11 +4,18 @@
 
 ## 运行
 
+需要 Python 3.11 或更新版本。
+
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m cardgame              # 监听 $ZEROTIER_IP（未设置则 127.0.0.1）:8000
-.venv/bin/python -m cardgame --listen 0.0.0.0 --port 9000
+python -m pip install -r requirements.txt
+python -m cardgame                              # 监听 $ZEROTIER_IP（未设置则 127.0.0.1）:8000
+python -m cardgame --listen 0.0.0.0 --port 9000
+```
+
+或者用 [uv](https://docs.astral.sh/uv/)（自动安装依赖）：
+
+```bash
+uv run python -m cardgame
 ```
 
 然后用浏览器打开 `http://<地址>:<端口>/`，输入用户名登录（首次登录即注册，密码可留空）。
@@ -18,9 +25,11 @@ python3 -m venv .venv
 ## 测试
 
 ```bash
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest
+python -m pip install -r requirements-dev.txt
+python -m pytest
 ```
+
+或者 `uv run pytest`。
 
 ## 文档
 

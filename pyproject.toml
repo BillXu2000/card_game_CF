@@ -1,0 +1,14 @@
+[project]
+name = "cardgame"
+version = "0.1.0"
+description = "局域网卡牌游戏服务器（红心大战、城市交易所）"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.9"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+# only for tools/build_china_map.py
+tools = ["shapely>=2"]
+
+[tool.uv]
+package = false

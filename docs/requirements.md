@@ -76,5 +76,5 @@ AI：根据手牌“潜力”（每个 Pattern 的价值按还缺几张打折求
 
 ## 6. 流程
 
-- git：`dev` 分支开发，每个阶段完成后 `--no-ff` 合并到 `master`。不修改 `external/`。
+- git：最初按阶段在 `dev` 分支开发、`--no-ff` 合并到 `master`；之后直接在 `master` 上提交，改完即推送到 GitHub。不修改 `external/`。
 - 完成 5d（红心大战 AI）后停下，启动服务器给用户测试（已完成）。
