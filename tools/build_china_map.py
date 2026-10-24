@@ -85,7 +85,8 @@ RAILWAYS = {
 YANGTZE_ESTUARY = [(119.61, 32.20), (119.80, 32.24), (120.05, 32.02), (120.27, 31.95), (120.55, 31.98),
                    (120.85, 31.93), (121.00, 31.78), (121.30, 31.55), (121.60, 31.42), (121.90, 31.33)]
 # province name positions (lon, lat) where the centroid would sit on a city label
-PROVINCE_LABEL = {"江苏省": (119.6, 33.6), "湖北省": (113.4, 31.55), "四川省": (102.3, 31.6), "广东省": (115.6, 24.5)}
+PROVINCE_LABEL = {"江苏省": (119.6, 33.6), "湖北省": (113.4, 31.55), "四川省": (102.3, 31.6), "广东省": (115.6, 24.5),
+                  "北京市": (115.75, 40.8), "天津市": (118.45, 39.3), "上海市": (122.55, 30.95), "重庆市": (108.5, 30.75)}
 # only water that matters for the game (太湖 for 苏锡常) plus 黄河 for orientation
 LAKES = {"Tai Hu": "太湖"}
 
@@ -207,7 +208,7 @@ def main(src: Path) -> None:
         "cities": {c: [round(v, 1) for v in project(*ll)] for c, ll in CITIES.items()},
         # where to write feature names: (lon, lat) next to the line / inside the lake
         "feature_labels": {name: [round(v, 1) for v in project(*ll)] for name, ll in {
-            "长江": (109.0, 30.55), "京沪高铁": (117.25, 36.7), "成襄铁路": (107.4, 33.3), "太湖": (120.22, 31.2),
+            "长江": (116.6, 29.55), "京沪高铁": (117.25, 36.7), "成襄铁路": (107.4, 33.3), "太湖": (120.22, 31.2),
         }.items()},
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

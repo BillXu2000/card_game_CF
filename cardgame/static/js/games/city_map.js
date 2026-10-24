@@ -46,7 +46,7 @@ const VIEW_TITLE = { yrd: "长江三角洲", prd: "珠江三角洲", locator: "�
 let data = null;
 let loading = null;
 let panel = null;          // persistent DOM node, re-attached on every render
-let current = { hand: {}, patterns: [], provinceOf: {}, pinned: null, hover: null };
+let current = { hand: {}, patterns: [], provinceOf: {}, pinned: null, hover: null, city: null };
 
 function load() {
   if (!loading) {
@@ -83,6 +83,12 @@ export function mapPanel(info, hand, onReady) {
 // Highlight a Pattern while hovering something that refers to it (null clears).
 export function hoverPattern(patternId) {
   current.hover = patternId;
+  if (data && panel) refreshHighlight();
+}
+
+// Highlight every Pattern a city takes part in (hovering the city or a card of it).
+export function hoverCity(city) {
+  current.city = city;
   if (data && panel) refreshHighlight();
 }
 
@@ -173,8 +179,8 @@ function base(svg, name) {
   if (name === "main") {
     const k = data.views.main[2] / VIEW_WIDTH.main;
     for (const p of data.provinces) {
-      // only provinces of the game; municipalities are cities
-      if (!p.label || !p.game || p.game === "直辖市") continue;
+      // only provinces (and municipalities) of the game
+      if (!p.label || !p.game) continue;
       const t = el("text", { x: p.label[0], y: p.label[1], class: "cm-prov-label game", "font-size": 12 * k }, svg);
       t.textContent = p.short;
       if (p.game) t.style.fill = GAME_COLOR[p.game];
@@ -224,13 +230,17 @@ function drawCities(svg) {
       el("circle", { r: 0.9, class: "sym-pref-dot" }, node);
     }
     if (PORTS.includes(city)) el("text", { x: -12, y: 12, class: "sym-port" }, node).textContent = "⚓";
-    if (FURNACES.includes(city)) fire(node, 8, -9);
-    if (HAMMERS.includes(city)) hammer(node, 8, -9);
+    if (FURNACES.includes(city)) fire(node, 9, -10);
+    if (HAMMERS.includes(city)) hammer(node, 10, -11);
     const [dx, dy, anchor] = LABELS[name][city] ?? [7, 4, "start"];
     const t = el("text", { x: dx, y: dy, "text-anchor": anchor, class: "cm-label" }, node);
     t.textContent = city + (count ? ` ×${count}` : "");
     // bring the hovered city to the front so its name is not hidden by neighbours
-    node.addEventListener("mouseenter", () => { if (g.lastChild !== node) g.append(node); });
+    node.addEventListener("mouseenter", () => {
+      if (g.lastChild !== node) g.append(node);
+      hoverCity(city);
+    });
+    node.addEventListener("mouseleave", () => hoverCity(null));
     const patterns = current.patterns.filter((p) => city in p.need && !p.id.startsWith("four:")).map((p) => p.name);
     el("title", {}, node).textContent = `${city}（${prov}${CAPITALS.includes(city) ? "，省会" : ""}）`
       + (count ? `\n手里有 ${count} 张` : "\n手里没有") + `\nPattern：${patterns.join("、")}`;
@@ -238,18 +248,18 @@ function drawCities(svg) {
 }
 
 // 【四大火炉】 flame
-function fire(parent, x, y) {
-  const g = el("g", { class: "sym-fire", transform: `translate(${x},${y})` }, parent);
+function fire(parent, x, y, size = 1.25) {
+  const g = el("g", { class: "sym-fire", transform: `translate(${x},${y}) scale(${size})` }, parent);
   el("path", { d: "M0,-5.5C2.8,-2.2 4,0 3.2,2.6C2.4,5 -2.4,5 -3.2,2.6C-3.9,0.4 -1.6,-0.6 0,-5.5Z", class: "outer" }, g);
   el("path", { d: "M0,-0.8C1.5,1 1.6,2.7 0,3.8C-1.6,2.7 -1.5,1 0,-0.8Z", class: "inner" }, g);
   return g;
 }
 
-// 【泉岭大球】 hammer
-function hammer(parent, x, y) {
-  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) rotate(-35)` }, parent);
-  el("rect", { x: -0.9, y: -2.5, width: 1.8, height: 8.5, rx: 0.5, class: "handle" }, g);
-  el("rect", { x: -4.6, y: -5.2, width: 9.2, height: 3.4, rx: 0.7, class: "head" }, g);
+// 【泉岭大球】 hammer: big, dark head on a wooden handle, with a white outline
+function hammer(parent, x, y, size = 1.6) {
+  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(-40)` }, parent);
+  el("rect", { x: -1.1, y: -2.6, width: 2.2, height: 9.5, rx: 0.6, class: "handle" }, g);
+  el("rect", { x: -5, y: -5.8, width: 10, height: 4, rx: 0.8, class: "head" }, g);
   return g;
 }
 
@@ -264,25 +274,37 @@ function star(r) {
 }
 
 function refreshHighlight() {
-  const pid = current.hover ?? current.pinned;
-  const p = pid ? current.patterns.find((x) => x.id === pid) : null;
-  const cities = new Set(p ? Object.keys(p.need) : []);
-  const f = pid ? FEATURES[pid] : null;
-  for (const svg of panel.querySelectorAll(".cm-svg")) {
-    svg.classList.toggle("focus", !!p);
-    for (const node of svg.querySelectorAll(".cm-city")) node.classList.toggle("on", cities.has(node.dataset.city));
-    for (const r of svg.querySelectorAll(".cm-rail")) r.classList.toggle("on", f?.kind === "rail" && f.id === r.dataset.rail);
-    for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", f?.kind === "river");
-    for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", f?.kind === "lake" && f.id === l.dataset.lake);
-    for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", f?.kind === "province" && f.id === pr.dataset.game);
-    svg.classList.toggle("ports-on", f?.kind === "ports");
-    svg.classList.toggle("fire-on", f?.kind === "fire");
-    svg.classList.toggle("hammer-on", f?.kind === "hammer");
-    svg.classList.toggle("capitals-on", f?.kind === "capitals");
+  // a hovered Pattern wins over a hovered city, which wins over the pinned Pattern
+  let pids = [];
+  let caption = "移到 Pattern、城市或城市牌上，查看它在地图上的位置";
+  if (current.hover) pids = [current.hover];
+  else if (current.city) pids = current.patterns.filter((p) => current.city in p.need).map((p) => p.id);
+  else if (current.pinned) pids = [current.pinned];
+  const ps = pids.map((id) => current.patterns.find((x) => x.id === id)).filter(Boolean);
+  if (current.city && !current.hover) {
+    caption = `${current.city}：` + ps.filter((p) => !p.id.startsWith("four:")).map((p) => p.name).join("、");
+  } else if (ps.length) {
+    const p = ps[0];
+    caption = `${p.name}：${Object.keys(p.need).join("、")}（${p.value} 元）`;
   }
-  for (const b of panel.querySelectorAll(".cm-feature")) b.classList.toggle("on", b.dataset.pattern === pid);
-  const caption = panel.querySelector(".cm-caption");
-  if (caption) caption.textContent = p ? `${p.name}：${Object.keys(p.need).join("、")}（${p.value} 元）` : "移到 Pattern 上查看它在地图上的位置";
+  const cities = new Set(ps.flatMap((p) => Object.keys(p.need)));
+  const fs = pids.map((id) => FEATURES[id]).filter(Boolean);
+  const has = (kind, id) => fs.some((f) => f.kind === kind && (id === undefined || f.id === id));
+  for (const svg of panel.querySelectorAll(".cm-svg")) {
+    svg.classList.toggle("focus", ps.length > 0);
+    for (const node of svg.querySelectorAll(".cm-city")) {
+      node.classList.toggle("on", cities.has(node.dataset.city));
+      node.classList.toggle("this", node.dataset.city === current.city && !current.hover);
+    }
+    for (const r of svg.querySelectorAll(".cm-rail")) r.classList.toggle("on", has("rail", r.dataset.rail));
+    for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", has("river"));
+    for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", has("lake", l.dataset.lake));
+    for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", has("province", pr.dataset.game));
+    for (const kind of ["ports", "fire", "hammer", "capitals"]) svg.classList.toggle(`${kind}-on`, has(kind));
+  }
+  for (const b of panel.querySelectorAll(".cm-feature")) b.classList.toggle("on", pids.includes(b.dataset.pattern));
+  const cap = panel.querySelector(".cm-caption");
+  if (cap) cap.textContent = caption;
 }
 
 function featureList() {
@@ -321,8 +343,8 @@ function legend() {
     ["高速铁路", (s) => { const g = el("g", { class: "cm-rail hsr" }, s); el("path", { d: "M1,8H23", class: "under" }, g); el("path", { d: "M1,8H23", class: "over" }, g); }],
     ["铁路", (s) => { const g = el("g", { class: "cm-rail rail" }, s); el("path", { d: "M1,8H23", class: "under" }, g); el("path", { d: "M1,8H23", class: "over" }, g); }],
     ["港口", (s) => { const t = el("text", { x: 6, y: 13, class: "sym-port" }, s); t.textContent = "⚓"; }],
-    ["火炉", (s) => fire(s, 12, 9)],
-    ["泉岭大球", (s) => hammer(s, 12, 9)],
+    ["火炉（四大火炉）", (s) => fire(s, 12, 8.5, 1.2)],
+    ["榔头（泉岭大球）", (s) => hammer(s, 12, 9, 1.15)],
     ["手里有的城市", (s) => {
       const g = el("g", { class: "cm-city held", transform: "translate(12,8)" }, s);
       g.style.setProperty("--pv", GAME_COLOR["江苏"]);
@@ -333,7 +355,7 @@ function legend() {
   for (const [label, draw] of items) {
     const item = document.createElement("span");
     item.className = "cm-legend-item";
-    const s = el("svg", { width: 24, height: 16, viewBox: "0 0 24 16" });
+    const s = el("svg", { width: 36, height: 24, viewBox: "0 0 24 16" });
     draw(s);
     item.append(s, document.createTextNode(label));
     box.append(item);

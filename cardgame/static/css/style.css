@@ -331,6 +331,8 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 
 .cm-city .halo { fill: #ffd84a; opacity: 0; }
 .cm-city.on .halo { opacity: .9; }
+.cm-city.this .halo { fill: #ff9f1a; opacity: 1; }
+.cm-city.this .cm-label { opacity: 1; }
 .cm-svg.focus .cm-city:not(.on) { opacity: .45; }
 .sym-capital-ring { fill: #fff; stroke: #c0392b; stroke-width: 1; }
 .sym-capital { fill: #c0392b; }
@@ -350,14 +352,15 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 /* cities in your hand: symbol filled with the province colour */
 .cm-city.held .sym-capital-ring, .cm-city.held .sym-prov-outer, .cm-city.held .sym-pref { fill: var(--pv); }
 .cm-city.held .sym-capital, .cm-city.held .sym-prov-inner, .cm-city.held .sym-pref-dot { fill: #fff; }
-.sym-fire .outer { fill: #e8590c; } .sym-fire .inner { fill: #ffd43b; }
-.sym-hammer .handle { fill: #8a5a2b; } .sym-hammer .head { fill: #5c6670; }
+.sym-fire .outer { fill: #e8590c; stroke: #fff; stroke-width: .8; paint-order: stroke; } .sym-fire .inner { fill: #ffd43b; }
+.sym-hammer rect { stroke: #fff; stroke-width: .9; paint-order: stroke; }
+.sym-hammer .handle { fill: #a0632b; } .sym-hammer .head { fill: #2f3a44; }
 .cm-svg.fire-on .sym-fire, .cm-svg.hammer-on .sym-hammer { transform-box: fill-box; transform-origin: center; scale: 1.6; }
 
 .cm-features { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* fixed height: a caption that grows would move the buttons under the mouse */
 .cm-caption { width: 100%; font-size: 13px; height: 2.9em; line-height: 1.45em; overflow: hidden; }
 .cm-feature.on { background: #ffe27a; border-color: #c98c00; color: #222; }
-.cm-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 10px; font-size: 12px; }
+.cm-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 10px; font-size: 14px; }
 .cm-legend-item { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .cm-legend-item svg .cm-river, .cm-legend-item svg .cm-coast, .cm-legend-item svg .cm-border, .cm-legend-item svg .cm-rail path { vector-effect: none; }
