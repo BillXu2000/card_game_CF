@@ -4,7 +4,7 @@
 // and the card just discarded on the right (over the sea), and your hand at
 // the bottom.
 import {
-  fitMap, hoverCity, hoveredCity, hoverPattern, mapBackground, mapCaption, mapLegend, onCityHover,
+  fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
 } from "./city_map.js";
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
@@ -200,7 +200,7 @@ export function render(el, ctx) {
 
   if (v.phase === "over") felt.append(finalBox(v, name));
 
-  fadeOtherCities(hoveredCity());  // a city on the map may still be hovered after a re-render
+  fadeOtherCities(focusCities());  // something may still be hovered after a re-render
   fitTarget = [felt, area];
   if (resizer) { resizer.disconnect(); resizer.observe(felt); }
   requestAnimationFrame(() => fitMap(felt, area));
@@ -390,15 +390,16 @@ function sortCards(ids, card, cityOrder) {
 // hovering a city card highlights that city's Patterns on the map
 let cardHover = false;  // the card is replaced on re-render without a mouseleave
 
-// while a city is hovered (on the map or as a card) every card of another city fades
+// while a city or Pattern is hovered (map, cards, Pattern table, buttons)
+// every card of a city outside it fades
 let tableEl = null;
-function fadeOtherCities(city) {
+function fadeOtherCities(cities) {
   if (!tableEl) return;
   for (const e of tableEl.querySelectorAll(".ccard[data-city], .mcard[data-city]")) {
-    e.classList.toggle("faded", city != null && e.dataset.city !== city);
+    e.classList.toggle("faded", cities != null && !cities.has(e.dataset.city));
   }
 }
-onCityHover(fadeOtherCities);
+onFocusChange(fadeOtherCities);
 
 function linkToMap(d, c) {
   d.dataset.city = c.city;

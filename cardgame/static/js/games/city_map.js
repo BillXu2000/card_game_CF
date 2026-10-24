@@ -62,7 +62,7 @@ let caption = null;    // persistent caption element
 let fitK = null;       // map units per px of the background
 let pendingFit = null; // fit requested before the data arrived
 let current = { patterns: [], provinceOf: {}, held: new Set(), pinned: null, hover: null, city: null };
-const cityListeners = [];   // told whenever the hovered city changes
+const focusListeners = [];  // told whenever the hovered city / Pattern changes
 
 function load() {
   if (!loading) {
@@ -148,8 +148,10 @@ export function fitMap(felt, area) {
 }
 
 export function hoverPattern(patternId) {
+  if (current.hover === patternId) return;
   current.hover = patternId;
   if (data && bg) refreshHighlight();
+  notifyFocus();
 }
 
 // Highlight every Pattern a city takes part in (hovering the city or a card of it).
@@ -157,16 +159,27 @@ export function hoverCity(city) {
   if (current.city === city) return;
   current.city = city;
   if (data && bg) refreshHighlight();
-  for (const fn of cityListeners) fn(city);
+  notifyFocus();
 }
 
-export function hoveredCity() {
-  return current.city;
+// The cities being looked at: those of the hovered Pattern, else the hovered
+// city, else null.
+export function focusCities() {
+  if (current.hover) {
+    const p = current.patterns.find((x) => x.id === current.hover);
+    if (p) return new Set(Object.keys(p.need));
+  }
+  return current.city ? new Set([current.city]) : null;
 }
 
-// Register ``fn(city | null)`` to follow the hovered city (map or cards).
-export function onCityHover(fn) {
-  if (!cityListeners.includes(fn)) cityListeners.push(fn);
+// Register ``fn(Set | null)`` to follow focusCities() (hovers on the map, cards or Patterns).
+export function onFocusChange(fn) {
+  if (!focusListeners.includes(fn)) focusListeners.push(fn);
+}
+
+function notifyFocus() {
+  const cities = focusCities();
+  for (const fn of focusListeners) fn(cities);
 }
 
 // ------------------------------------------------------------------- build
