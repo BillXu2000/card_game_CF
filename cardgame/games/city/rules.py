@@ -446,7 +446,8 @@ class CityExchange(Game):
             raise IllegalAction("没有可用的周游列国")
         st.set_prop(cards[0], "used", True)
         n = st.num_players
-        st.vars["tour"] = {"by": seat, "order": [(seat + k) % n for k in range(1, n)], "idx": 0}
+        # from the next player round the table, the touring player included (last)
+        st.vars["tour"] = {"by": seat, "order": [(seat + k) % n for k in range(1, n + 1)], "idx": 0}
         st.vars["phase"] = "tour"
         st.log(f"{P(seat)} 发动【周游列国】")
 
@@ -461,8 +462,11 @@ class CityExchange(Game):
         v = st.vars
         t = v["tour"]
         if card is None:
-            self._pay(st, seat, t["by"], TOUR_FINE)
-            st.log(f"{P(seat)} 不弃牌，交给 {P(t['by'])} {TOUR_FINE} 元")
+            if seat == t["by"]:
+                st.log(f"{P(seat)} 不弃牌（付给自己），周游列国结束")
+            else:
+                self._pay(st, seat, t["by"], TOUR_FINE)
+                st.log(f"{P(seat)} 不弃牌，交给 {P(t['by'])} {TOUR_FINE} 元")
             v["tour"] = None
             v["phase"] = "main"
             return
