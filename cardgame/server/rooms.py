@@ -396,8 +396,11 @@ class RoomManager:
         seats = [s for s in sorted(prompts) if room.seats[s].ai]
         if not seats:
             return
-        seat = seats[0]
-        delay = room.game.ai_delay(room.state, prompts[seat]) * self.ai_speed
+        # several AIs may be able to act at once (e.g. 点炮 next to the normal turn):
+        # the one with the shortest delay goes first
+        delays = {s: room.game.ai_delay(room.state, prompts[s]) for s in seats}
+        seat = min(seats, key=lambda s: (delays[s], s))
+        delay = delays[seat] * self.ai_speed
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:

@@ -45,8 +45,9 @@ class CityAI(AI):
         self.view = view
         self.seat = view["seat"]
         self.hand = [c for c in view["zones"][f"hand:{self.seat}"]["cards"] if c is not None]
-        kind = prompt["type"]
-        return getattr(self, f"_{kind}")(prompt)
+        if prompt.get("claims"):
+            return self._claim(prompt["claims"][0])  # 点炮 offers first, then the normal flow
+        return getattr(self, f"_{prompt['type']}")(prompt)
 
     # ---- helpers
     def city(self, card: int) -> str:
@@ -118,9 +119,9 @@ class CityAI(AI):
         deck = len(self.view["zones"]["deck"]["cards"])
         return deck < 3 * self.view["num_players"]
 
-    def _dianpao(self, prompt: dict) -> dict:
-        """Claim the most valuable set of compatible Patterns."""
-        opts = prompt["options"]
+    def _claim(self, claim: dict) -> dict:
+        """Claim the most valuable set of compatible Patterns (or decline)."""
+        opts = claim["options"]
         hand = self.cities(self.hand)
         best, best_value = [], 0
         idx = range(len(opts))
@@ -134,7 +135,7 @@ class CityAI(AI):
                     value = sum(opts[i]["gain"] for i in combo)
                     if value > best_value:
                         best, best_value = list(combo), value
-        return {"type": "dianpao", "choices": best}
+        return {"type": "dianpao", "offer": claim["offer"], "choices": best}
 
     def _bid(self, prompt: dict) -> dict:
         """Become the landlord when the revealed cards add enough potential."""
