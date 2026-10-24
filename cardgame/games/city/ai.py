@@ -4,7 +4,8 @@ Decisions are driven by the *potential* of a hand: every Pattern contributes
 its value discounted by how many cards are still missing.  The AI keeps the
 cards with the highest potential, cashes Patterns as soon as it can, buys or
 buys back a card when that completes a Pattern, claims every 点炮 it can and
-uses 周游列国 in its last round.  It only looks at its own masked view.
+uses 周游列国 in its last round.  In 斗地主 mode it bids for the landlord
+when the revealed cards add enough potential.  It only looks at its own masked view.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from itertools import combinations
 
 from ...engine import AI
 from .data import PATTERN_BY_ID, PATTERNS
-from .rules import BUY_PRICE, BUYBACK_COST, TOUR_FINE
+from .rules import BUYBACK_COST, TOUR_FINE
 
 # chance-like weight of a Pattern that misses 0, 1, 2, 3 cards
 MISSING_WEIGHT = (1.0, 0.3, 0.08, 0.02)
@@ -134,6 +135,16 @@ class CityAI(AI):
                     if value > best_value:
                         best, best_value = list(combo), value
         return {"type": "dianpao", "choices": best}
+
+    def _bid(self, prompt: dict) -> dict:
+        """Become the landlord when the revealed cards add enough potential."""
+        hand = self.cities(self.hand)
+        gain = potential(hand + self.cities(prompt["bonus"])) - potential(hand)
+        return {"type": "bid", "take": gain >= 15}
+
+    def _give(self, prompt: dict) -> dict:
+        card = min(prompt["cards"], key=lambda c: (self.loss(c), c))
+        return {"type": "give", "card": card}
 
     def _tour(self, prompt: dict) -> dict:
         if not prompt["cards"]:

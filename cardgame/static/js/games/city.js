@@ -29,11 +29,18 @@ export function render(el, ctx) {
   const msg = document.createElement("b");
   msg.textContent = statusText(ctx, v, prompt, name);
   status.append(msg);
+  if (v.phase === "bid") {
+    const bonus = div("c-discard");
+    bonus.append(span("muted", "翻开的牌："));
+    for (const id of view.zones.bonus.cards) bonus.append(chip(card(id)));
+    status.append(bonus);
+  }
   el.append(status);
 
   // ---- players, starting with me
   const players = div("c-players");
   const order = [...Array(n).keys()].map((k) => ((me ?? 0) + k) % n);
+  const pileShownBy = {};
   for (const i of order) {
     const p = div("c-player" + (v.turn === i ? " turn" : "") + (i === me ? " me" : ""));
     const head = div("c-head");
@@ -41,8 +48,10 @@ export function render(el, ctx) {
     nm.textContent = name(i);
     const money = span("c-money", `${v.money[i]} 元`);
     const handCount = span("muted", `手牌 ${view.zones[`hand:${i}`].cards.length}`);
-    head.append(nm, money, handCount);
-    for (const id of view.zones[`special:${i}`].cards) {
+    head.append(nm);
+    if (v.landlord != null) head.append(span("c-role " + (i === v.landlord ? "lord" : "farmer"), i === v.landlord ? "地主" : "农民"));
+    head.append(money, handCount);
+    for (const id of view.zones[v.special_of[i]].cards) {
       const c = card(id);
       const s = span("c-special " + c.kind + (c.used ? " used" : ""), c.kind === "tour" ? "周游" : "强买");
       s.title = c.name + (c.used ? "（已使用）" : "");
@@ -60,7 +69,16 @@ export function render(el, ctx) {
       }
     }
     const pile = div("c-discard");
-    const discard = view.zones[`discard:${i}`].cards;
+    const pileZone = v.discard_of[i];
+    if (pileZone in pileShownBy) {
+      pile.append(span("muted", `与 ${name(pileShownBy[pileZone])} 共用弃牌区`));
+      p.append(pile);
+      players.append(p);
+      continue;
+    }
+    pileShownBy[pileZone] = i;
+    const discard = view.zones[pileZone].cards;
+    if (view.zones[pileZone].owner == null) pile.append(span("muted", "共用："));
     if (!discard.length) pile.append(span("muted", "弃牌区为空"));
     for (const id of discard) {
       const c = chip(card(id));
@@ -90,7 +108,8 @@ export function render(el, ctx) {
     const handIds = view.zones[`hand:${me}`].cards;
     const drawn = new Set(view.private.drawn ?? []);
     const hand = div("c-hand");
-    const selectable = prompt?.type === "draw" ? (id) => drawn.has(id) : prompt?.type === "tour" ? () => true : null;
+    const selectable = prompt?.type === "draw" ? (id) => drawn.has(id)
+      : prompt?.type === "tour" || prompt?.type === "give" ? () => true : null;
     const cityOrder = Object.values(ctx.room.static.provinces).flat();
     for (const id of sortCards(handIds, card, cityOrder)) {
       const c = bigCard(card(id));
@@ -128,12 +147,19 @@ function statusText(ctx, v, prompt, name) {
       main: "出牌阶段：回购 / 出游 / 强买 / 兑现，完成后结束回合",
       dianpao: `${name(prompt.by)} 弃置的牌可以让你兑现 Pattern（点炮）`,
       tour: `${name(prompt.by)} 发动周游列国：弃置一张手牌，或交给 TA ${prompt.fine} 元`,
+      bid: "是否当地主？地主获得翻开的牌",
+      give: `回合结束：选一张手牌背面朝上交给 ${name(prompt.to)}`,
     }[prompt.type];
   }
-  const waiting = ctx.room.waiting.map(name).join("、");
-  if (v.phase === "dianpao") return `等待 ${waiting} 决定是否兑现…`;
-  if (v.phase === "tour") return `周游列国：等待 ${waiting}…`;
+  if (v.phase === "bid") return `等待 ${waiting(ctx, name)} 决定是否当地主…`;
+  if (v.phase === "give") return `等待 ${name(v.turn)} 交牌…`;
+  if (v.phase === "dianpao") return `等待 ${waiting(ctx, name)} 决定是否兑现…`;
+  if (v.phase === "tour") return `周游列国：等待 ${waiting(ctx, name)}…`;
   return `等待 ${name(v.turn)} 行动…`;
+}
+
+function waiting(ctx, name) {
+  return ctx.room.waiting.map(name).join("、");
 }
 
 function buildActions(box, ctx, prompt, rerender) {
@@ -170,6 +196,11 @@ function buildActions(box, ctx, prompt, rerender) {
     box.append(list);
     box.append(button("兑现所选", () => act({ type: "dianpao", choices: [...ui.dianpao] }), !ui.dianpao.size));
     box.append(button("不兑现", () => act({ type: "dianpao", choices: [] }), false, "ghost"));
+  } else if (prompt.type === "bid") {
+    box.append(button("当地主", () => act({ type: "bid", take: true })));
+    box.append(button("不当", () => act({ type: "bid", take: false }), false, "ghost"));
+  } else if (prompt.type === "give") {
+    box.append(button(`交给 ${ctx.seatName(prompt.to)}`, () => act({ type: "give", card: ui.selected }), ui.selected == null));
   } else if (prompt.type === "tour") {
     box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
     box.append(button(`不弃，付 ${prompt.fine} 元`, () => act({ type: "tour", card: null }), false, "ghost"));
@@ -196,6 +227,7 @@ function finalBox(v, name) {
   const h = document.createElement("h3");
   h.textContent = `游戏结束，获胜：${v.winners.map(name).join("、")}`;
   box.append(h);
+  if (v.teams) box.append(span("c-rank", `地主 ${v.teams.landlord} 元 vs 农民合计 ${v.teams.farmers} 元`));
   ranking.forEach((i, k) => box.append(span("c-rank", `${k + 1}. ${name(i)}：${v.money[i]} 元`)));
   return box;
 }
