@@ -220,6 +220,7 @@ def test_dianpao_offer_ends_when_card_is_bought():
 def test_tour_pays_fine_or_loops():
     st = setup(hands={1: ["北京"], 2: []})
     G.act(st, 0, {"type": "tour"})
+    assert st.vars["tour"]["order"] == [1, 2, 0]  # the touring player is in the queue too
     assert G.prompts(st)[1]["type"] == "tour"
     G.act(st, 1, {"type": "tour", "card": st.zone("hand:1").cards[0]})
     # seat 2 has no cards and must pay
@@ -232,11 +233,22 @@ def test_tour_pays_fine_or_loops():
 
 
 def test_tour_once_mode_nobody_pays():
-    st = setup(hands={1: ["北京"], 2: ["上海"]}, options={"tour_loop": False})
+    st = setup(hands={0: ["广州"], 1: ["北京"], 2: ["上海"]}, options={"tour_loop": False})
     G.act(st, 0, {"type": "tour"})
     G.act(st, 1, {"type": "tour", "card": st.zone("hand:1").cards[0]})
     G.act(st, 2, {"type": "tour", "card": st.zone("hand:2").cards[0]})
+    assert G.prompts(st)[0]["type"] == "tour"  # the touring player's turn in the queue
+    G.act(st, 0, {"type": "tour", "card": st.zone("hand:0").cards[0]})
     assert st.vars["phase"] == "main" and st.vars["money"] == [0, 0, 0]
+
+
+def test_tour_touring_player_stops_for_free():
+    st = setup(hands={0: ["广州"], 1: ["北京", "成都"], 2: ["上海"]})
+    G.act(st, 0, {"type": "tour"})
+    G.act(st, 1, {"type": "tour", "card": st.zone("hand:1").cards[0]})
+    G.act(st, 2, {"type": "tour", "card": st.zone("hand:2").cards[0]})
+    G.act(st, 0, {"type": "tour", "card": None})  # paying oneself: the tour just ends
+    assert st.vars["phase"] == "main" and st.vars["money"] == [0, 0, 0] and st.vars["tour"] is None
 
 
 def test_game_ends_when_deck_empty():

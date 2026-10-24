@@ -151,6 +151,8 @@ class CityAI(AI):
         if not prompt["cards"]:
             return {"type": "tour", "card": None}
         card = min(prompt["cards"], key=lambda c: (self.loss(c), c))
-        if self.loss(card) < TOUR_FINE * 0.8:
+        # on our own tour, stopping costs nothing: only go round again with a useless card
+        limit = 1.5 if prompt["by"] == self.seat else TOUR_FINE * 0.8
+        if self.loss(card) < limit:
             return {"type": "tour", "card": card}
         return {"type": "tour", "card": None}

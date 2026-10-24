@@ -356,7 +356,13 @@ async function renderGame(r) {
     act: (action) => send({ op: "action", code: r.code, action }),
     toast,
   };
-  mod.render(el, ctx);
+  try {
+    mod.render(el, ctx);
+  } catch (err) {
+    // keep the page usable and make the problem visible instead of a half-drawn table
+    console.error("render failed", err);
+    toast(`界面出错：${err.message}（刷新页面可恢复）`, true);
+  }
 }
 
 // ------------------------------------------------------------------ start

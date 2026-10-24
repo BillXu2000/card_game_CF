@@ -29,8 +29,14 @@ export function render(el, ctx) {
   const me = ctx.seat;
   // other players act in parallel (点炮), so selections survive their moves and
   // only reset when this player's own step changes
-  const key = `${v.turn_no}:${v.phase}:${v.tour?.idx ?? ""}:${prompt?.type}`;
+  const used = v.used ? `${+v.used.cash}${+v.used.buy}${+v.used.buyback}` : "";
+  const key = `${v.turn_no}:${v.phase}:${v.tour?.idx ?? ""}:${prompt?.type}:${used}`;
   if (key !== ui.key) ui = { key, mode: null, picked: new Set(), selected: null, claims: ui.claims };
+  // leave a buy/buy-back mode once that action is no longer offered
+  if ((ui.mode === "buy" && !prompt?.buy) || (ui.mode === "buyback" && !prompt?.buyback?.length)) {
+    ui.mode = null;
+    ui.picked = new Set();
+  }
   const open = new Set((prompt?.claims ?? []).map((c) => c.offer));
   for (const id of Object.keys(ui.claims)) if (!open.has(+id)) delete ui.claims[id];
   const rerender = () => render(el, ctx);
@@ -220,7 +226,9 @@ function statusText(ctx, v, prompt, name) {
     return {
       draw: "摸牌阶段：点选一张本回合摸到的牌（蓝框）弃置",
       main: "出牌阶段：可以回购、出游、强买、兑现（顺序随意），然后结束回合",
-      tour: `${name(prompt.by)} 发动周游列国：点选一张手牌弃置，或交给 TA ${prompt.fine} 元`,
+      tour: prompt.by === ctx.seat
+        ? "你的周游列国轮到你自己：点选一张手牌弃置继续，或者不弃（周游列国结束）"
+        : `${name(prompt.by)} 发动周游列国：点选一张手牌弃置，或交给 TA ${prompt.fine} 元`,
       bid: "要当地主吗？地主获得中间翻开的牌",
       give: `回合结束：点选一张手牌，背面朝上交给 ${name(prompt.to)}`,
     }[prompt.type] + extra;
@@ -284,7 +292,8 @@ function buildActions(box, ctx, prompt, rerender, highlight) {
       : "点击你弃牌区里要收回的牌（黄色虚线框）"));
   } else if (prompt.type === "tour") {
     box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
-    box.append(button(`不弃，付 ${prompt.fine} 元`, () => act({ type: "tour", card: null }), false, "ghost"));
+    box.append(button(prompt.by === ctx.seat ? "不弃，结束周游列国" : `不弃，付 ${prompt.fine} 元`,
+      () => act({ type: "tour", card: null }), false, "ghost"));
   } else if (prompt.type === "bid") {
     box.append(button("当地主", () => act({ type: "bid", take: true })));
     box.append(button("不当", () => act({ type: "bid", take: false }), false, "ghost"));
