@@ -2,7 +2,7 @@
 // with your hand; the other players sit around the felt with their money,
 // card backs, special cards and discard piles; the deck and the card just
 // discarded are in the middle.
-import { hoverPattern, mapPanel } from "./city_map.js";
+import { hoverCity, hoverPattern, mapPanel } from "./city_map.js";
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
@@ -27,6 +27,7 @@ export function render(el, ctx) {
   const info = ctx.room.static;
   const cityOrder = Object.values(info.provinces).flat();
 
+  if (cardHover) { cardHover = false; hoverCity(null); }
   el.className = "game city";
   el.innerHTML = "";
   const felt = div(`felt city-felt n${n}`);
@@ -358,9 +359,18 @@ function sortCards(ids, card, cityOrder) {
   return [...ids].sort((a, b) => cityOrder.indexOf(card(a).city) - cityOrder.indexOf(card(b).city) || a - b);
 }
 
+// hovering a city card highlights that city's Patterns on the map
+let cardHover = false;  // the card is replaced on re-render without a mouseleave
+
+function linkToMap(d, c) {
+  d.addEventListener("mouseenter", () => { cardHover = true; hoverCity(c.city); });
+  d.addEventListener("mouseleave", () => { cardHover = false; hoverCity(null); });
+  return d;
+}
+
 // a playing-card sized city card
 function bigCard(c) {
-  const d = div("card ccard " + PROVINCE_CLASS[c.province]);
+  const d = linkToMap(div("card ccard " + PROVINCE_CLASS[c.province]), c);
   d.innerHTML = `<span class="cc-band"></span><span class="cc-name"></span><span class="cc-prov"></span>`;
   d.children[1].textContent = c.city;
   d.children[2].textContent = c.province + (CAPITALS.has(c.city) ? " ★" : "");
@@ -370,7 +380,7 @@ function bigCard(c) {
 
 // small card for piles and known cards
 function miniCard(c, extra = "") {
-  const d = div(`mcard ${PROVINCE_CLASS[c.province]} ${extra}`);
+  const d = linkToMap(div(`mcard ${PROVINCE_CLASS[c.province]} ${extra}`), c);
   d.textContent = c.city;
   d.title = `${c.city}（${c.province}${CAPITALS.has(c.city) ? "，省会" : ""}）`;
   return d;
