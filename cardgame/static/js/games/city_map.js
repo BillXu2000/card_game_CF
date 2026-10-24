@@ -61,7 +61,8 @@ let legendBox = null;  // persistent legend element
 let caption = null;    // persistent caption element
 let fitK = null;       // map units per px of the background
 let pendingFit = null; // fit requested before the data arrived
-let current = { patterns: [], provinceOf: {}, pinned: null, hover: null, city: null };
+let current = { patterns: [], provinceOf: {}, held: new Set(), pinned: null, hover: null, city: null };
+const cityListeners = [];   // told whenever the hovered city changes
 
 function load() {
   if (!loading) {
@@ -78,8 +79,10 @@ function el(tag, attrs = {}, parent = null) {
 }
 
 // ------------------------------------------------------------------ public
-// The background map.  ``info`` is the game's static info.
-export function mapBackground(info) {
+// The background map.  ``info`` is the game's static info; ``held`` the
+// cities in the player's hand (shown normally, every other city is faded).
+export function mapBackground(info, held = new Set()) {
+  current.held = held;
   current.patterns = info.patterns;
   current.provinceOf = {};
   for (const [p, cs] of Object.entries(info.provinces)) for (const c of cs) current.provinceOf[c] = p;
@@ -151,8 +154,19 @@ export function hoverPattern(patternId) {
 
 // Highlight every Pattern a city takes part in (hovering the city or a card of it).
 export function hoverCity(city) {
+  if (current.city === city) return;
   current.city = city;
   if (data && bg) refreshHighlight();
+  for (const fn of cityListeners) fn(city);
+}
+
+export function hoveredCity() {
+  return current.city;
+}
+
+// Register ``fn(city | null)`` to follow the hovered city (map or cards).
+export function onCityHover(fn) {
+  if (!cityListeners.includes(fn)) cityListeners.push(fn);
 }
 
 // ------------------------------------------------------------------- build
@@ -277,7 +291,7 @@ function drawCities(svg, k) {
   for (const [city, [x, y]] of Object.entries(data.cities)) {
     if (name !== "main" && (x < x0 || x > x0 + w || y < y0 || y > y0 + h)) continue;
     const prov = current.provinceOf[city];
-    const node = el("g", { class: "cm-city",
+    const node = el("g", { class: "cm-city" + (current.held.has(city) ? "" : " away"),
       transform: `translate(${x},${y}) scale(${k * SYMBOL_SCALE})` }, g);
     node.dataset.city = city;
     node.style.setProperty("--pv", GAME_COLOR[prov]);

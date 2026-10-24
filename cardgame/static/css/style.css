@@ -353,7 +353,12 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-city .halo { fill: #ffd84a; opacity: 0; }
 .cm-city.on .halo { opacity: .9; }
 .cm-city.this .halo { fill: #ff9f1a; opacity: 1; }
-.cm-svg.focus .cm-city:not(.on):not(.this) { opacity: .28; }
+/* cities not in your hand are faded; hovering brings the relevant ones back */
+.cm-city.away { opacity: .35; }
+.cm-city.on, .cm-city.this { opacity: 1; }
+.cm-svg.focus .cm-city:not(.on):not(.this) { opacity: .22; }
+/* hovering a city: every card of another city fades */
+.ccard.faded, .mcard.faded { opacity: .28; transition: opacity .12s; }
 .cm-city.this .sym-fire, .cm-city.this .sym-hammer, .cm-city.this .sym-fort, .cm-city.this .sym-port {
   transform-box: fill-box; transform-origin: center; scale: 1.35; }
 .sym-capital-ring { fill: #fff; stroke: #c0392b; stroke-width: 1; }

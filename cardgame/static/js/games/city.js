@@ -3,7 +3,9 @@
 // backs, special cards and discard piles, the legend is on the left, the deck
 // and the card just discarded on the right (over the sea), and your hand at
 // the bottom.
-import { fitMap, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend } from "./city_map.js";
+import {
+  fitMap, hoverCity, hoveredCity, hoverPattern, mapBackground, mapCaption, mapLegend, onCityHover,
+} from "./city_map.js";
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
@@ -42,7 +44,9 @@ export function render(el, ctx) {
   el.innerHTML = "";
   const felt = div(`city-table n${n}`);
   el.append(felt);
-  felt.append(mapBackground(info));
+  const held = new Set(me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : []);
+  felt.append(mapBackground(info, held));
+  tableEl = el;
 
   // ---- other players along the top edge
   const base = me ?? 0;
@@ -196,6 +200,7 @@ export function render(el, ctx) {
 
   if (v.phase === "over") felt.append(finalBox(v, name));
 
+  fadeOtherCities(hoveredCity());  // a city on the map may still be hovered after a re-render
   fitTarget = [felt, area];
   if (resizer) { resizer.disconnect(); resizer.observe(felt); }
   requestAnimationFrame(() => fitMap(felt, area));
@@ -385,7 +390,18 @@ function sortCards(ids, card, cityOrder) {
 // hovering a city card highlights that city's Patterns on the map
 let cardHover = false;  // the card is replaced on re-render without a mouseleave
 
+// while a city is hovered (on the map or as a card) every card of another city fades
+let tableEl = null;
+function fadeOtherCities(city) {
+  if (!tableEl) return;
+  for (const e of tableEl.querySelectorAll(".ccard[data-city], .mcard[data-city]")) {
+    e.classList.toggle("faded", city != null && e.dataset.city !== city);
+  }
+}
+onCityHover(fadeOtherCities);
+
 function linkToMap(d, c) {
+  d.dataset.city = c.city;
   d.addEventListener("mouseenter", () => { cardHover = true; hoverCity(c.city); });
   d.addEventListener("mouseleave", () => { cardHover = false; hoverCity(null); });
   return d;
