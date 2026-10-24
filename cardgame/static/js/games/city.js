@@ -29,8 +29,14 @@ export function render(el, ctx) {
   const me = ctx.seat;
   // other players act in parallel (点炮), so selections survive their moves and
   // only reset when this player's own step changes
-  const key = `${v.turn_no}:${v.phase}:${v.tour?.idx ?? ""}:${prompt?.type}`;
+  const used = v.used ? `${+v.used.cash}${+v.used.buy}${+v.used.buyback}` : "";
+  const key = `${v.turn_no}:${v.phase}:${v.tour?.idx ?? ""}:${prompt?.type}:${used}`;
   if (key !== ui.key) ui = { key, mode: null, picked: new Set(), selected: null, claims: ui.claims };
+  // leave a buy/buy-back mode once that action is no longer offered
+  if ((ui.mode === "buy" && !prompt?.buy) || (ui.mode === "buyback" && !prompt?.buyback?.length)) {
+    ui.mode = null;
+    ui.picked = new Set();
+  }
   const open = new Set((prompt?.claims ?? []).map((c) => c.offer));
   for (const id of Object.keys(ui.claims)) if (!open.has(+id)) delete ui.claims[id];
   const rerender = () => render(el, ctx);
