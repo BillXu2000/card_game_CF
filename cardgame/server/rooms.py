@@ -106,6 +106,9 @@ class RoomManager:
     def _hist_path(self, code: str) -> str:
         return f"rooms/{code}.history.jsonl"
 
+    def _load_state(self, room: Room, data) -> GameState:
+        return room.game.migrate(GameState.from_dict(data))
+
     def save(self, room: Room) -> None:
         self.storage.save_json(self._meta_path(room.code), room.meta())
 
@@ -118,7 +121,8 @@ class RoomManager:
                 room.seats = [Seat(s.get("user"), s.get("ai")) for s in m["seats"]]
                 room.created = m.get("created", time.time())
                 if m.get("state"):
-                    room.state = GameState.from_dict(m["state"])
+                    room.state = self._load_state(room, m["state"])
+                    room.game.prompts(room.state)  # fail here, not later, if the state is unusable
                     room.history = self.storage.load_jsonl(self._hist_path(code))
                     if not room.history or room.history[-1]["state"]["seq"] != room.state.seq:
                         room.history.append(self._snapshot(room, "恢复"))
@@ -128,7 +132,10 @@ class RoomManager:
 
     def resume_ai(self) -> None:
         for room in self.rooms.values():
-            self._schedule_ai(room)
+            try:
+                self._schedule_ai(room)
+            except Exception:
+                log.exception("failed to resume AI in room %s", room.code)
 
     # ---------------------------------------------------------------- helpers
     def get(self, code: object) -> Room:
@@ -312,7 +319,7 @@ class RoomManager:
         self._require_host(room, user)
         if not isinstance(index, int) or not 0 <= index < len(room.history):
             raise RoomError("历史记录无效")
-        room.state = GameState.from_dict(room.history[index]["state"])
+        room.state = self._load_state(room, room.history[index]["state"])
         room.history = room.history[: index + 1]
         self.storage.write_jsonl(self._hist_path(room.code), room.history)
         self._cancel_ai(room)
@@ -333,7 +340,7 @@ class RoomManager:
         if any(s.empty for s in room.seats):
             raise RoomError("还有空座位（可以设为 AI）")
         try:
-            st = GameState.from_dict(data)  # type: ignore[arg-type]
+            st = self._load_state(room, data)  # type: ignore[arg-type]
         except Exception as e:
             raise RoomError(f"JSON 无效：{e}") from None
         if st.game != room.game_id:
