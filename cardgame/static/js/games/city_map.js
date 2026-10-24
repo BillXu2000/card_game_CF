@@ -1,12 +1,17 @@
 // Simplified map of China for 城市交易所: every city of the game at its real
 // position, with standard map symbols, plus the map features that some
-// Patterns stand for (长江, railways, 太湖, ports, provinces).
+// Patterns stand for (长江, railways, 太湖, ports, provinces, and icons for
+// 四大火炉 / 泉岭大球).  City names appear on hover; cities you hold are
+// filled with their province colour.
 // Geometry comes from static/data/china_map.json (tools/build_china_map.py).
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const GAME_COLOR = { "直辖市": "#c0392b", "江苏": "#2471a3", "湖北": "#1e8449", "四川": "#b9770e", "广东": "#7d3c98" };
 const CAPITAL = "北京";
-const PORTS = ["上海", "天津", "深圳", "汕头"];  // 【沿海港口】
+const CAPITALS = ["南京", "武汉", "成都", "广州"];
+const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口】
+const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
+const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
 
 // Patterns that correspond to something drawn on the map
 const FEATURES = {
@@ -15,6 +20,8 @@ const FEATURES = {
   "special:成襄铁路": { kind: "rail", id: "chengxiang", label: "成襄铁路" },
   "special:苏锡常": { kind: "lake", id: "太湖", label: "环太湖" },
   "special:沿海港口": { kind: "ports", label: "港口" },
+  "special:四大火炉": { kind: "fire", label: "火炉" },
+  "special:泉岭大球": { kind: "hammer", label: "榔头" },
   "municipal": { kind: "province", id: "直辖市", label: "直辖市" },
   "province:江苏": { kind: "province", id: "江苏", label: "江苏省" },
   "province:湖北": { kind: "province", id: "湖北", label: "湖北省" },
@@ -23,18 +30,12 @@ const FEATURES = {
   "capitals": { kind: "capitals", label: "省级行政中心" },
 };
 
-// label placement per view: [dx, dy, anchor] in px; null = no label in this view
+// where a city's name appears when hovered: [dx, dy, anchor] in px (default: right)
 const LABELS = {
-  main: {
-    北京: [-7, -5, "end"], 天津: [7, 4, "start"], 上海: [8, 4, "start"], 重庆: [-7, 4, "end"],
-    南京: [-7, -4, "end"], 常州: null, 无锡: null, 苏州: null, 徐州: [7, 4, "start"],
-    武汉: [7, 4, "start"], 宜昌: [-7, -3, "end"], 襄阳: [7, -2, "start"], 十堰: [-7, -4, "end"],
-    荆州: [2, 13, "middle"], 成都: [-7, 4, "end"], 广元: [7, -3, "start"], 绵阳: [7, 4, "start"],
-    攀枝花: [7, 4, "start"], 宜宾: [7, 6, "start"], 广州: [-7, -4, "end"], 深圳: [6, 9, "start"],
-    汕头: [7, 4, "start"], 中山: null, 河源: [7, -2, "start"],
-  },
-  yrd: { 南京: [4, -8, "start"], 常州: [0, -9, "middle"], 无锡: [-7, 11, "end"], 苏州: [2, 14, "middle"], 上海: [8, 4, "start"] },
-  prd: { 广州: [7, -4, "start"], 深圳: [7, 4, "start"], 中山: [-7, 4, "end"], 河源: [-7, -4, "end"] },
+  main: { 北京: [-7, -5, "end"], 重庆: [-7, 4, "end"], 南京: [-7, -4, "end"], 宜昌: [-7, -3, "end"],
+          十堰: [-7, -4, "end"], 成都: [-7, 4, "end"], 广州: [-7, -4, "end"] },
+  yrd: { 南京: [4, -8, "start"], 常州: [0, -9, "middle"], 无锡: [-7, 11, "end"], 苏州: [2, 14, "middle"] },
+  prd: { 中山: [-7, 4, "end"], 河源: [-7, -4, "end"] },
   locator: {},
 };
 const VIEW_WIDTH = { main: 440, yrd: 214, prd: 214, locator: 150 };
@@ -156,7 +157,8 @@ function base(svg, name) {
     p.dataset.lake = lake;
     el("title", {}, p).textContent = lake;
   }
-  el("path", { d: data.yangtze, class: "cm-river" }, svg);
+  el("path", { d: data.yellow_river, class: "cm-river yellow" }, svg);
+  el("path", { d: data.yangtze, class: "cm-river yangtze" }, svg);
   for (const [id, r] of Object.entries(data.railways)) {
     const g = el("g", { class: `cm-rail ${r.kind}` }, svg);
     g.dataset.rail = id;
@@ -167,10 +169,9 @@ function base(svg, name) {
   if (name === "main") {
     const k = data.views.main[2] / VIEW_WIDTH.main;
     for (const p of data.provinces) {
-      // municipalities are labelled as cities; 港澳 are too small
-      if (!p.label || p.game === "直辖市" || ["香港", "澳门"].includes(p.short)) continue;
-      const t = el("text", { x: p.label[0], y: p.label[1], class: "cm-prov-label" + (p.game ? " game" : ""),
-        "font-size": (p.game ? 12 : 10) * k }, svg);
+      // only provinces of the game; municipalities are cities
+      if (!p.label || !p.game || p.game === "直辖市") continue;
+      const t = el("text", { x: p.label[0], y: p.label[1], class: "cm-prov-label game", "font-size": 12 * k }, svg);
       t.textContent = p.short;
       if (p.game) t.style.fill = GAME_COLOR[p.game];
     }
@@ -203,34 +204,49 @@ function drawCities(svg) {
   for (const [city, [x, y]] of Object.entries(data.cities)) {
     if (x < x0 || x > x0 + w || y < y0 || y > y0 + h) continue;
     const prov = current.provinceOf[city];
-    const node = el("g", { class: "cm-city", transform: `translate(${x},${y}) scale(${k})` }, g);
+    const count = current.hand[city] ?? 0;
+    const node = el("g", { class: "cm-city" + (count ? " held" : ""), transform: `translate(${x},${y}) scale(${k})` }, g);
     node.dataset.city = city;
+    node.style.setProperty("--pv", GAME_COLOR[prov]);
     el("circle", { r: 9, class: "halo" }, node);
     if (city === CAPITAL) {
       el("circle", { r: 5.5, class: "sym-capital-ring" }, node);
       el("path", { d: star(4.6), class: "sym-capital" }, node);
-    } else if (prov === "直辖市" || ["南京", "武汉", "成都", "广州"].includes(city)) {
+    } else if (prov === "直辖市" || CAPITALS.includes(city)) {
       el("circle", { r: 4.5, class: "sym-prov-outer" }, node);
       el("circle", { r: 2.1, class: "sym-prov-inner" }, node);
     } else {
       el("circle", { r: 3.2, class: "sym-pref" }, node);
       el("circle", { r: 0.9, class: "sym-pref-dot" }, node);
     }
-    if (PORTS.includes(city)) {
-      const a = el("text", { x: -12, y: 12, class: "sym-port" }, node);
-      a.textContent = "⚓";
-    }
-    const place = LABELS[name][city];
-    const count = current.hand[city] ?? 0;
-    if (place !== null) {
-      const [dx, dy, anchor] = place ?? [7, 4, "start"];
-      const t = el("text", { x: dx, y: dy, "text-anchor": anchor, class: "cm-label" + (count ? " held" : "") }, node);
-      t.textContent = city + (count ? ` ×${count}` : "");
-    }
+    if (PORTS.includes(city)) el("text", { x: -12, y: 12, class: "sym-port" }, node).textContent = "⚓";
+    if (FURNACES.includes(city)) fire(node, 8, -9);
+    if (HAMMERS.includes(city)) hammer(node, 8, -9);
+    const [dx, dy, anchor] = LABELS[name][city] ?? [7, 4, "start"];
+    const t = el("text", { x: dx, y: dy, "text-anchor": anchor, class: "cm-label" }, node);
+    t.textContent = city + (count ? ` ×${count}` : "");
+    // bring the hovered city to the front so its name is not hidden by neighbours
+    node.addEventListener("mouseenter", () => { if (g.lastChild !== node) g.append(node); });
     const patterns = current.patterns.filter((p) => city in p.need && !p.id.startsWith("four:")).map((p) => p.name);
-    el("title", {}, node).textContent = `${city}（${prov}${["南京", "武汉", "成都", "广州"].includes(city) ? "，省会" : ""}）`
-      + (count ? `\n手里有 ${count} 张` : "") + `\nPattern：${patterns.join("、")}`;
+    el("title", {}, node).textContent = `${city}（${prov}${CAPITALS.includes(city) ? "，省会" : ""}）`
+      + (count ? `\n手里有 ${count} 张` : "\n手里没有") + `\nPattern：${patterns.join("、")}`;
   }
+}
+
+// 【四大火炉】 flame
+function fire(parent, x, y) {
+  const g = el("g", { class: "sym-fire", transform: `translate(${x},${y})` }, parent);
+  el("path", { d: "M0,-5.5C2.8,-2.2 4,0 3.2,2.6C2.4,5 -2.4,5 -3.2,2.6C-3.9,0.4 -1.6,-0.6 0,-5.5Z", class: "outer" }, g);
+  el("path", { d: "M0,-0.8C1.5,1 1.6,2.7 0,3.8C-1.6,2.7 -1.5,1 0,-0.8Z", class: "inner" }, g);
+  return g;
+}
+
+// 【泉岭大球】 hammer
+function hammer(parent, x, y) {
+  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) rotate(-35)` }, parent);
+  el("rect", { x: -0.9, y: -2.5, width: 1.8, height: 8.5, rx: 0.5, class: "handle" }, g);
+  el("rect", { x: -4.6, y: -5.2, width: 9.2, height: 3.4, rx: 0.7, class: "head" }, g);
+  return g;
 }
 
 function star(r) {
@@ -252,10 +268,12 @@ function refreshHighlight() {
     svg.classList.toggle("focus", !!p);
     for (const node of svg.querySelectorAll(".cm-city")) node.classList.toggle("on", cities.has(node.dataset.city));
     for (const r of svg.querySelectorAll(".cm-rail")) r.classList.toggle("on", f?.kind === "rail" && f.id === r.dataset.rail);
-    for (const r of svg.querySelectorAll(".cm-river")) r.classList.toggle("on", f?.kind === "river");
+    for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", f?.kind === "river");
     for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", f?.kind === "lake" && f.id === l.dataset.lake);
     for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", f?.kind === "province" && f.id === pr.dataset.game);
     svg.classList.toggle("ports-on", f?.kind === "ports");
+    svg.classList.toggle("fire-on", f?.kind === "fire");
+    svg.classList.toggle("hammer-on", f?.kind === "hammer");
     svg.classList.toggle("capitals-on", f?.kind === "capitals");
   }
   for (const b of panel.querySelectorAll(".cm-feature")) b.classList.toggle("on", b.dataset.pattern === pid);
@@ -299,6 +317,14 @@ function legend() {
     ["高速铁路", (s) => { const g = el("g", { class: "cm-rail hsr" }, s); el("path", { d: "M1,8H23", class: "under" }, g); el("path", { d: "M1,8H23", class: "over" }, g); }],
     ["铁路", (s) => { const g = el("g", { class: "cm-rail rail" }, s); el("path", { d: "M1,8H23", class: "under" }, g); el("path", { d: "M1,8H23", class: "over" }, g); }],
     ["港口", (s) => { const t = el("text", { x: 6, y: 13, class: "sym-port" }, s); t.textContent = "⚓"; }],
+    ["火炉", (s) => fire(s, 12, 9)],
+    ["泉岭大球", (s) => hammer(s, 12, 9)],
+    ["手里有的城市", (s) => {
+      const g = el("g", { class: "cm-city held", transform: "translate(12,8)" }, s);
+      g.style.setProperty("--pv", GAME_COLOR["江苏"]);
+      el("circle", { r: 3.2, class: "sym-pref" }, g);
+      el("circle", { r: 0.9, class: "sym-pref-dot" }, g);
+    }],
   ];
   for (const [label, draw] of items) {
     const item = document.createElement("span");

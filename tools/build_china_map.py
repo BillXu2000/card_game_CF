@@ -86,7 +86,8 @@ YANGTZE_ESTUARY = [(119.61, 32.20), (119.80, 32.24), (120.05, 32.02), (120.27, 3
                    (120.85, 31.93), (121.00, 31.78), (121.30, 31.55), (121.60, 31.42), (121.90, 31.33)]
 # province name positions (lon, lat) where the centroid would sit on a city label
 PROVINCE_LABEL = {"江苏省": (119.6, 33.6), "湖北省": (113.4, 31.55), "四川省": (102.3, 31.6), "广东省": (115.6, 24.5)}
-LAKES = {"Tai Hu": "太湖", "Poyang Hu": "鄱阳湖", "Dongting Hu": "洞庭湖", "Hongze Hu": "洪泽湖", "Chao Hu": "巢湖"}
+# only water that matters for the game (太湖 for 苏锡常) plus 黄河 for orientation
+LAKES = {"Tai Hu": "太湖"}
 
 VIEWS = {
     "main": (99.3, 20.6, 123.4, 41.3),
@@ -177,6 +178,7 @@ def main(src: Path) -> None:
     yangtze = [project_geom(shape(f["geometry"])) for f in rivers["features"]
                if f["properties"].get("name") in ("Jinsha", "Chang Jiang", "Yangtze")]
     yangtze.append(LineString([project(*p) for p in YANGTZE_ESTUARY]))
+    yellow = [project_geom(shape(f["geometry"])) for f in rivers["features"] if f["properties"].get("name") == "Huang"]
     lakes_src = json.load(open(src / "ne_10m_lakes.geojson", encoding="utf-8"))
     lakes = {LAKES[f["properties"]["name"]]: project_geom(shape(f["geometry"]))
              for f in lakes_src["features"] if f["properties"].get("name") in LAKES}
@@ -197,6 +199,7 @@ def main(src: Path) -> None:
         "border": path(simplify(land_border)),
         "dashes": path(dashes) if dashes is not None else "",  # thin polygons: never simplify
         "yangtze": path(simplify(unary_union(yangtze), tol_main=1.5)),
+        "yellow_river": path(simplify(unary_union(yellow), tol_main=1.5)),
         "lakes": {k: path(simplify(g, tol_main=1.0, tol_detail=0.5)) for k, g in lakes.items()},
         "railways": {k: {"name": r["name"], "kind": r["kind"],
                          "d": path(LineString([project(lon, lat) for _, lon, lat in r["via"]]))}
