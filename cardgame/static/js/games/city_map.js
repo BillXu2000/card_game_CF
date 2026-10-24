@@ -32,7 +32,7 @@ const FEATURES = {
   "special:沿海港口": { kind: "ports", label: "港口" },
   "special:四大火炉": { kind: "fire", label: "火炉" },
   "special:泉岭大球": { kind: "hammer", label: "榔头" },
-  "special:古来要塞": { kind: "fort", label: "城堡" },
+  "special:古来要塞": { kind: "fort", label: "要塞" },
   "municipal": { kind: "province", id: "直辖市", label: "直辖市" },
   "province:江苏": { kind: "province", id: "江苏", label: "江苏省" },
   "province:湖北": { kind: "province", id: "湖北", label: "湖北省" },
@@ -206,7 +206,7 @@ function buildLegend() {
   const body = legendBox.querySelector(".cm-legend-body");
   body.className = "cm-legend-body";
   body.innerHTML = "";
-  body.append(legend(), featureList());
+  body.append(legend());
   if (SHOW_INSETS) body.append(inset("yrd"), inset("prd"));
   body.append(inset("locator"));
   const src = document.createElement("div");
@@ -431,57 +431,45 @@ function refreshHighlight() {
 }
 
 // ------------------------------------------------------------------ legend
-function featureList() {
-  const box = document.createElement("div");
-  box.className = "cm-features";
-  for (const [pid, f] of Object.entries(FEATURES)) {
-    const p = current.patterns.find((x) => x.id === pid);
-    if (!p) continue;
-    const b = document.createElement("button");
-    b.className = "cm-feature ghost small";
-    b.dataset.pattern = pid;
-    b.textContent = p.name.replace(/[【】]/g, "");
-    b.title = `${p.name}（${f.label}）`;
-    b.onmouseenter = () => hoverPattern(pid);
-    b.onmouseleave = () => hoverPattern(null);
-    b.onclick = () => { current.pinned = current.pinned === pid ? null : pid; refreshHighlight(); };
-    box.append(b);
-  }
-  return box;
+// The legend lists the Patterns one per row (those of a province, four of a
+// city and the city pairs are left out), each with its map symbol if it has
+// one.  Hovering a row shows the Pattern on the map; clicking pins it.
+const LEGEND_ROWS = {
+  "special:长江之歌": { draw: (s) => el("path", { d: "M1,10C6,4 12,12 23,6", class: "cm-river" }, s), text: "长江" },
+  "special:京沪高铁": { draw: (s) => railSymbol(s, "hsr") },
+  "special:成襄铁路": { draw: (s) => railSymbol(s, "rail") },
+  "special:苏锡常": { draw: (s) => el("ellipse", { cx: 12, cy: 8, rx: 9, ry: 5, class: "cm-lake" }, s) },
+  "special:沿海港口": { draw: (s) => anchor(s, 12, 8.5, 1.15), text: "港口" },
+  "special:四大火炉": { draw: (s) => fire(s, 12, 8.5, 1.3), text: "火炉" },
+  "special:泉岭大球": { draw: (s) => hammer(s, 12, 9, 1.15), text: "榔头！" },
+  "special:古来要塞": { draw: (s) => fort(s, 12, 8.3, 1.15), text: "要塞" },
+  "capitals": { draw: (s) => { el("circle", { cx: 12, cy: 8, r: 4.5, class: "sym-prov-outer" }, s); el("circle", { cx: 12, cy: 8, r: 2.1, class: "sym-prov-inner" }, s); } },
+};
+const NOT_IN_LEGEND = /^(four:|province:|pair:|municipal$)/;
+
+function railSymbol(s, kind) {
+  const g = el("g", { class: `cm-rail ${kind}` }, s);
+  el("path", { d: "M1,8H23", class: "under" }, g);
+  el("path", { d: "M1,8H23", class: "over" }, g);
 }
 
 function legend() {
   const box = document.createElement("div");
   box.className = "cm-legend";
-  const line = (cls) => (s) => el("path", { d: "M1,8H23", class: cls }, s);
-  const rail = (kind) => (s) => {
-    const g = el("g", { class: `cm-rail ${kind}` }, s);
-    el("path", { d: "M1,8H23", class: "under" }, g);
-    el("path", { d: "M1,8H23", class: "over" }, g);
-  };
-  const items = [
-    ["首都", (s) => { el("circle", { cx: 12, cy: 8, r: 5.5, class: "sym-capital-ring" }, s); el("path", { d: star(4.6), transform: "translate(12,8)", class: "sym-capital" }, s); }],
-    ["省级行政中心", (s) => { el("circle", { cx: 12, cy: 8, r: 4.5, class: "sym-prov-outer" }, s); el("circle", { cx: 12, cy: 8, r: 2.1, class: "sym-prov-inner" }, s); }],
-    ["地级行政中心", (s) => { el("circle", { cx: 12, cy: 8, r: 3.2, class: "sym-pref" }, s); el("circle", { cx: 12, cy: 8, r: 0.9, class: "sym-pref-dot" }, s); }],
-    ["国界", line("cm-border")],
-    ["省级界", line("cm-prov-line")],
-    ["海岸线", line("cm-coast")],
-    ["河流", (s) => el("path", { d: "M1,10C6,4 12,12 23,6", class: "cm-river" }, s)],
-    ["湖泊", (s) => el("ellipse", { cx: 12, cy: 8, rx: 9, ry: 5, class: "cm-lake" }, s)],
-    ["高速铁路", rail("hsr")],
-    ["铁路", rail("rail")],
-    ["港口", (s) => anchor(s, 12, 8.5, 1.15)],
-    ["火炉（四大火炉）", (s) => fire(s, 12, 8.5, 1.3)],
-    ["榔头（泉岭大球）", (s) => hammer(s, 12, 9, 1.15)],
-    ["城堡（古来要塞）", (s) => fort(s, 12, 8.3, 1.15)],
-  ];
-  for (const [label, draw] of items) {
-    const item = document.createElement("span");
-    item.className = "cm-legend-item";
+  for (const p of current.patterns) {
+    if (NOT_IN_LEGEND.test(p.id)) continue;
+    const row = LEGEND_ROWS[p.id] ?? {};
+    const b = document.createElement("button");
+    b.className = "cm-legend-item cm-feature";
+    b.dataset.pattern = p.id;
+    b.title = `${p.name}：${Object.keys(p.need).join("、")}（${p.value} 元）`;
     const s = el("svg", { width: 48, height: 32, viewBox: "0 0 24 16" });
-    draw(s);
-    item.append(s, document.createTextNode(label));
-    box.append(item);
+    row.draw?.(s);
+    b.append(s, document.createTextNode(row.text ?? p.name.replace(/[【】]/g, "")));
+    b.onmouseenter = () => hoverPattern(p.id);
+    b.onmouseleave = () => hoverPattern(null);
+    b.onclick = () => { current.pinned = current.pinned === p.id ? null : p.id; refreshHighlight(); };
+    box.append(b);
   }
   return box;
 }

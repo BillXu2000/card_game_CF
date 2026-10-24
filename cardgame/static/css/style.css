@@ -419,9 +419,13 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-svg.fire-on .sym-fire, .cm-svg.hammer-on .sym-hammer, .cm-svg.fort-on .sym-fort, .cm-svg.ports-on .sym-port {
   transform-box: fill-box; transform-origin: center; scale: 1.6; }
 
-.cm-features { display: flex; flex-wrap: wrap; gap: 4px; }
-.cm-feature { padding: 1px 6px; font-size: 12px; }
+.cm-legend { display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+.cm-legend-item {
+  display: flex; align-items: center; gap: 4px; white-space: nowrap; text-align: left;
+  padding: 0 8px 0 0; min-height: 32px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text); font-size: 14px; cursor: pointer;
+}
+.cm-legend-item svg { flex: none; }
+.cm-legend-item:hover { background: rgba(0, 0, 0, .06); }
 .cm-feature.on { background: #ffe27a; border-color: #c98c00; color: #222; }
-.cm-legend { display: grid; grid-template-columns: 1fr; gap: 0; font-size: 14px; }
-.cm-legend-item { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .cm-legend-item svg .cm-river, .cm-legend-item svg .cm-coast, .cm-legend-item svg .cm-border, .cm-legend-item svg .cm-rail path { vector-effect: none; }
