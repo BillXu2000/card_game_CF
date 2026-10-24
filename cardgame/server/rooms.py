@@ -294,8 +294,12 @@ class RoomManager:
         self._require_host(room, user)
         if any(s.empty for s in room.seats):
             raise RoomError("还有空座位（可以设为 AI）")
+        try:
+            st = room.game.new_state(len(room.seats), room.options, seed=random.getrandbits(64))
+        except ValueError as e:
+            raise RoomError(str(e)) from None
         self._cancel_ai(room)
-        room.state = room.game.new_state(len(room.seats), room.options, seed=random.getrandbits(64))
+        room.state = st
         room.history = []
         self.storage.delete(self._hist_path(room.code))
         self._record(room, "开始")

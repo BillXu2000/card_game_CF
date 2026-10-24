@@ -188,13 +188,15 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .game.city { display: flex; flex-direction: column; gap: 10px; }
 .pv-m { --pv: #c0392b; } .pv-js { --pv: #2471a3; } .pv-hb { --pv: #1e8449; } .pv-sc { --pv: #b9770e; } .pv-gd { --pv: #7d3c98; }
 .c-status { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; }
-.c-status span { color: var(--muted); }
+.c-status > span { color: var(--muted); }
 .c-players { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .c-player { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .c-player.me { border-color: var(--accent); }
 .c-player.turn { box-shadow: 0 0 0 2px #f5b301; }
 .c-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .c-money { font-weight: 700; color: #a0700a; }
+.c-role { font-size: 12px; padding: 0 5px; border-radius: 4px; color: #fff; }
+.c-role.lord { background: #c0392b; } .c-role.farmer { background: #1e8449; }
 .c-special { font-size: 12px; padding: 0 5px; border-radius: 4px; border: 1px solid; }
 .c-special.tour { color: #8e44ad; } .c-special.buy { color: #c0392b; }
 .c-special.used { color: var(--muted); text-decoration: line-through; opacity: .6; }

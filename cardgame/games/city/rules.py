@@ -19,6 +19,12 @@ DRAW = 3
 BUYBACK_COST = 10
 BUY_PRICE = 4
 TOUR_FINE = 6
+# 斗地主 mode (rule book 3.2)
+LANDLORD_HAND = 4
+LANDLORD_BONUS = 4
+LANDLORD_DRAW = 4
+LANDLORD_BUY_PRICE = 2
+FARMERS = "farmers"
 
 
 def contains(have: Counter, need: Counter) -> bool:
@@ -59,6 +65,10 @@ class CityExchange(Game):
 
     def option_specs(self) -> list[dict]:
         return [
+            {"key": "mode", "label": "模式", "type": "choice", "default": "standard",
+             "choices": [["standard", "标准"], ["landlord", "斗地主（3 人）"]]},
+            {"key": "landlord_score", "label": "斗地主胜负", "type": "choice", "default": "sum",
+             "choices": [["sum", "地主 vs 农民合计"], ["each", "各自比较"]]},
             {"key": "start_money", "label": "初始货币", "type": "int", "default": 0, "min": 0, "max": 1000},
             {"key": "need_money", "label": "回购、强买需要钱够", "type": "bool", "default": True,
              "help": "关闭后余额可以因回购、强买变成负数；罚款（点炮、出游）总是可以扣成负数"},
@@ -72,6 +82,9 @@ class CityExchange(Game):
     # ------------------------------------------------------------------ setup
     def setup(self, st: GameState) -> None:
         n = st.num_players
+        landlord = st.options["mode"] == "landlord"
+        if landlord and n != 3:
+            raise ValueError("斗地主模式需要 3 人")
         st.add_zone("deck", visibility=HIDDEN)
         st.add_zone("removed", visibility=PUBLIC)
         for i in range(n):
@@ -83,13 +96,12 @@ class CityExchange(Game):
                 st.add_card({"kind": "city", "city": city, "province": PROVINCE_OF[city]}, "deck")
         tours = [st.add_card({"kind": "tour", "name": "周游列国"}, "removed") for _ in range(4)]
         buys = [st.add_card({"kind": "buy", "name": "强买"}, "removed") for _ in range(8)]
-        for i in range(n):
-            st.move(tours[i], f"special:{i}")
-            st.move(buys[2 * i], f"special:{i}")
-            st.move(buys[2 * i + 1], f"special:{i}")
+        if not landlord:
+            for i in range(n):
+                st.move(tours[i], f"special:{i}")
+                st.move(buys[2 * i], f"special:{i}")
+                st.move(buys[2 * i + 1], f"special:{i}")
         st.shuffle("deck")
-        for i in range(n):
-            st.draw("deck", f"hand:{i}", HAND_SIZE[n])
         first = st.rng.randrange(n)
         st.vars.update(
             money=[st.options["start_money"]] * n,
@@ -104,9 +116,75 @@ class CityExchange(Game):
             cash_count=[0] * n,
             dianpao_count=[0] * n,
             winners=None,
+            landlord=None,
+            discard_of=[f"discard:{i}" for i in range(n)],
+            special_of=[f"special:{i}" for i in range(n)],
         )
+        if landlord:
+            st.add_zone("bonus", visibility=PUBLIC)
+            st.add_zone(f"discard:{FARMERS}", visibility=PUBLIC)
+            st.add_zone(f"special:{FARMERS}", visibility=PUBLIC)
+            self._deal_landlord(st)
+            return
+        for i in range(n):
+            st.draw("deck", f"hand:{i}", HAND_SIZE[n])
         st.log(f"游戏开始，{P(first)} 先行动")
         self._begin_turn(st, first)
+
+    # ---------------------------------------------------------- 斗地主 setup
+    def _deal_landlord(self, st: GameState) -> None:
+        n = st.num_players
+        for i in range(n):
+            st.draw("deck", f"hand:{i}", LANDLORD_HAND)
+        st.draw("deck", "bonus", LANDLORD_BONUS)
+        first = st.vars["first"]
+        st.vars["bid"] = {"order": [(first + k) % n for k in range(n)], "idx": 0}
+        st.vars["phase"] = "bid"
+        st.log(f"每人摸 {LANDLORD_HAND} 张，翻开牌堆顶 {LANDLORD_BONUS} 张；从 {P(first)} 开始依次决定是否当地主")
+
+    def _act_bid(self, st: GameState, seat: int, take) -> None:
+        if not isinstance(take, bool):
+            raise IllegalAction("请选择是否当地主")
+        v = st.vars
+        b = v["bid"]
+        if not take:
+            st.log(f"{P(seat)} 不当地主")
+            b["idx"] += 1
+            if b["idx"] < len(b["order"]):
+                return
+            # nobody wants it: shuffle everything back and deal again
+            st.log("没有人当地主，重新洗牌发牌")
+            for i in range(st.num_players):
+                st.move_all(f"hand:{i}", "deck")
+            st.move_all("bonus", "deck")
+            st.shuffle("deck")
+            v["first"] = (v["first"] + 1) % st.num_players
+            self._deal_landlord(st)
+            return
+        v["bid"] = None
+        v["landlord"] = seat
+        st.move_all("bonus", f"hand:{seat}")
+        farmers = [i for i in range(st.num_players) if i != seat]
+        for i in farmers:
+            v["discard_of"][i] = f"discard:{FARMERS}"
+            v["special_of"][i] = f"special:{FARMERS}"
+        removed = st.zone("removed").cards
+        buys = [c for c in removed if st.attr(c, "kind") == "buy"][:3]
+        tour = next(c for c in removed if st.attr(c, "kind") == "tour")
+        for c in buys:
+            st.move(c, f"special:{seat}")
+        st.move(tour, f"special:{FARMERS}")
+        st.log(f"{P(seat)} 成为地主，获得翻开的 {LANDLORD_BONUS} 张牌")
+        self._begin_turn(st, seat)
+
+    def _act_give(self, st: GameState, seat: int, card) -> None:
+        if card not in self.hand(st, seat):
+            raise IllegalAction("只能交出自己的手牌")
+        to = self.partner(st, seat)
+        st.move(card, f"hand:{to}")
+        st.reveal(card, [seat])
+        st.log(f"{P(seat)} 交给 {P(to)} 一张牌")
+        self._end_turn(st)
 
     # -------------------------------------------------------------- helpers
     def hand(self, st: GameState, seat: int) -> list[int]:
@@ -115,9 +193,30 @@ class CityExchange(Game):
     def cities(self, st: GameState, cards) -> Counter:
         return Counter(st.attr(c, "city") for c in cards)
 
+    def landlord_mode(self, st: GameState) -> bool:
+        return st.options.get("mode") == "landlord"
+
+    def discard_zone(self, st: GameState, seat: int) -> str:
+        return st.vars["discard_of"][seat]
+
+    def partner(self, st: GameState, seat: int) -> int | None:
+        """The other farmer in 斗地主 mode."""
+        lord = st.vars.get("landlord")
+        if lord is None or seat == lord:
+            return None
+        return next(i for i in range(st.num_players) if i not in (seat, lord))
+
+    def discarded_by(self, st: GameState, card: int) -> int:
+        """Who discarded a card lying in a discard pile (shared piles record it)."""
+        by = st.prop(card, "by")
+        return by if by is not None else st.zone(st.where(card)).owner
+
     def unused(self, st: GameState, seat: int, kind: str) -> list[int]:
-        return [c for c in st.zone(f"special:{seat}").cards
+        return [c for c in st.zone(st.vars["special_of"][seat]).cards
                 if st.attr(c, "kind") == kind and not st.prop(c, "used")]
+
+    def buy_price(self, st: GameState) -> int:
+        return LANDLORD_BUY_PRICE if self.landlord_mode(st) else BUY_PRICE
 
     def card_name(self, st: GameState, card: int) -> str:
         a = st.cards[card]
@@ -146,7 +245,8 @@ class CityExchange(Game):
     def _begin_turn(self, st: GameState, seat: int) -> None:
         v = st.vars
         v.update(turn=seat, turn_no=v["turn_no"] + 1, used={"buyback": False, "buy": False, "cash": False})
-        drawn = st.draw("deck", f"hand:{seat}", DRAW)
+        n_draw = LANDLORD_DRAW if seat == v.get("landlord") else DRAW
+        drawn = st.draw("deck", f"hand:{seat}", n_draw)
         st.private[seat]["drawn"] = drawn
         v["drawn_count"] = len(drawn)
         st.log(f"{P(seat)} 的回合：摸 {len(drawn)} 张牌（牌堆剩 {len(st.zone('deck').cards)} 张）")
@@ -157,8 +257,16 @@ class CityExchange(Game):
         seat = v["turn"]
         st.private[seat].pop("drawn", None)
         if not st.zone("deck").cards:
-            best = max(v["money"])
-            v["winners"] = [i for i, m in enumerate(v["money"]) if m == best]
+            lord = v.get("landlord")
+            if lord is not None and st.options["landlord_score"] == "sum":
+                farmers = [i for i in range(st.num_players) if i != lord]
+                team = sum(v["money"][i] for i in farmers)
+                v["teams"] = {"landlord": v["money"][lord], "farmers": team}
+                v["winners"] = [lord] if v["money"][lord] > team else farmers if team > v["money"][lord] \
+                    else list(range(st.num_players))
+            else:
+                best = max(v["money"])
+                v["winners"] = [i for i, m in enumerate(v["money"]) if m == best]
             v["phase"] = "over"
             v["turn"] = None
             st.log("牌堆已空，游戏结束")
@@ -184,6 +292,11 @@ class CityExchange(Game):
             t = v["tour"]
             r = t["order"][t["idx"]]
             return {r: {"type": "tour", "by": t["by"], "cards": list(self.hand(st, r)), "fine": TOUR_FINE}}
+        if phase == "bid":
+            b = v["bid"]
+            return {b["order"][b["idx"]]: {"type": "bid", "bonus": list(st.zone("bonus").cards)}}
+        if phase == "give":
+            return {seat: {"type": "give", "to": self.partner(st, seat), "cards": list(self.hand(st, seat))}}
         return {}
 
     def _draw_cash_options(self, st: GameState, seat: int) -> list[dict]:
@@ -198,12 +311,14 @@ class CityExchange(Game):
         if not v["used"]["cash"]:
             p["cash"] = [pattern_option(x) for x in cashable(self.cities(st, self.hand(st, seat)))]
         if not v["used"]["buyback"] and (money >= BUYBACK_COST or not o["need_money"]):
-            p["buyback"] = list(st.zone(f"discard:{seat}").cards)
-        if not v["used"]["buy"] and self.unused(st, seat, "buy") and (money >= BUY_PRICE or not o["need_money"]):
-            cards = [c for i in range(st.num_players) if i != seat or o["buy_self"]
-                     for c in st.zone(f"discard:{i}").cards]
+            p["buyback"] = list(st.zone(self.discard_zone(st, seat)).cards)
+        price = self.buy_price(st)
+        if not v["used"]["buy"] and self.unused(st, seat, "buy") and (money >= price or not o["need_money"]):
+            own = self.discard_zone(st, seat)
+            zones = dict.fromkeys(v["discard_of"])  # distinct piles, in seat order
+            cards = [c for z in zones if z != own or o["buy_self"] for c in st.zone(z).cards]
             if cards:
-                p["buy"] = {"max": 2 if st.num_players == 4 else 1, "price": BUY_PRICE, "cards": cards}
+                p["buy"] = {"max": 2 if st.num_players == 4 else 1, "price": price, "cards": cards}
         p["tour"] = bool(self.unused(st, seat, "tour"))
         return p
 
@@ -212,8 +327,11 @@ class CityExchange(Game):
         out = []
         for c in st.vars["pending"]["cards"]:
             for p in claimable(hand, st.attr(c, "city")):
-                out.append({"card": c, **pattern_option(p), "gain": p.value * 2 // 3, "cost": p.value // 3})
+                out.append({"card": c, **pattern_option(p), "gain": p.value * 2 // 3, "cost": self._dianpao_cost(st, p)})
         return out
+
+    def _dianpao_cost(self, st: GameState, p: Pattern) -> int:
+        return 0 if self.landlord_mode(st) else p.value // 3
 
     # ----------------------------------------------------------------- apply
     def apply(self, st: GameState, seat: int, action: dict) -> None:
@@ -233,6 +351,10 @@ class CityExchange(Game):
             return self._act_dianpao(st, seat, action.get("choices"))
         elif phase == "tour" and kind == "tour":
             return self._act_tour_response(st, seat, action.get("card"))
+        elif phase == "bid" and kind == "bid":
+            return self._act_bid(st, seat, action.get("take"))
+        elif phase == "give" and kind == "give":
+            return self._act_give(st, seat, action.get("card"))
         raise IllegalAction("现在不能这样做")
 
     # draw phase
@@ -266,6 +388,7 @@ class CityExchange(Game):
             raise IllegalAction("不能回购这张牌")
         st.vars["used"]["buyback"] = True
         self._pay(st, seat, None, BUYBACK_COST)
+        st.set_prop(card, "by", None)
         st.move(card, f"hand:{seat}")
         st.reveal(card, range(st.num_players))
         st.log(f"{P(seat)} 花 {BUYBACK_COST} 元回购了 {self.card_name(st, card)}")
@@ -276,16 +399,18 @@ class CityExchange(Game):
         if (offer is None or not isinstance(cards, list) or not 1 <= len(cards) <= offer["max"]
                 or len(set(cards)) != len(cards) or any(c not in offer["cards"] for c in cards)):
             raise IllegalAction("不能强买这些牌")
-        if st.options["need_money"] and st.vars["money"][seat] < BUY_PRICE * len(cards):
+        price = offer["price"]
+        if st.options["need_money"] and st.vars["money"][seat] < price * len(cards):
             raise IllegalAction("钱不够")
         st.vars["used"]["buy"] = True
         st.set_prop(self.unused(st, seat, "buy")[0], "used", True)
         for c in cards:
-            owner = st.zone(st.where(c)).owner
-            self._pay(st, seat, owner, BUY_PRICE)
+            owner = self.discarded_by(st, c)
+            self._pay(st, seat, owner, price)
+            st.set_prop(c, "by", None)
             st.move(c, f"hand:{seat}")
             st.reveal(c, range(st.num_players))
-            st.log(f"{P(seat)} 强买了 {P(owner)} 的 {self.card_name(st, c)}，付 {BUY_PRICE} 元")
+            st.log(f"{P(seat)} 强买了 {P(owner)} 的 {self.card_name(st, c)}，付 {price} 元")
 
     def _act_tour(self, st, seat, action) -> None:
         cards = self.unused(st, seat, "tour")
@@ -298,6 +423,9 @@ class CityExchange(Game):
         st.log(f"{P(seat)} 发动【周游列国】")
 
     def _act_end(self, st, seat, action) -> None:
+        if self.partner(st, seat) is not None and self.hand(st, seat):
+            st.vars["phase"] = "give"  # 农民回合结束时交给另一位农民一张牌
+            return
         self._end_turn(st)
 
     # tour responses
@@ -325,8 +453,14 @@ class CityExchange(Game):
         self._discard(st, seat, card, resume=resume)
 
     # ------------------------------------------------------ discard & claims
+    def _put_discard(self, st: GameState, seat: int, card: int) -> None:
+        zone = self.discard_zone(st, seat)
+        st.move(card, zone)
+        if st.zone(zone).owner is None:
+            st.set_prop(card, "by", seat)
+
     def _discard(self, st: GameState, seat: int, card: int, resume: str) -> None:
-        st.move(card, f"discard:{seat}")
+        self._put_discard(st, seat, card)
         st.log(f"{P(seat)} 弃置 {self.card_name(st, card)}")
         self._open_window(st, seat, [card], resume)
 
@@ -369,20 +503,21 @@ class CityExchange(Game):
             for o, need in self._choice_allocation(st, s, picks):
                 cards = self._allocate(st, s, need)
                 for c in cards:
-                    st.move(c, f"discard:{s}")
+                    self._put_discard(st, s, c)
                 pat = PATTERN_BY_ID[o["pattern"]]
-                self._pay(st, p["by"], None, pat.value // 3)
+                cost = self._dianpao_cost(st, pat)
+                self._pay(st, p["by"], None, cost)
                 self._pay(st, None, s, pat.value * 2 // 3)
                 st.vars["dianpao_count"][p["by"]] += 1
                 st.log(f"{P(p['by'])} 点炮：{P(s)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
-                       f"{P(s)} +{pat.value * 2 // 3}，{P(p['by'])} -{pat.value // 3}")
+                       f"{P(s)} +{pat.value * 2 // 3}，" + (f"{P(p['by'])} -{cost}" if cost else "弃牌者不扣钱"))
         st.vars["phase"] = p["resume"]
         st.vars["pending"] = None
 
     def _cash(self, st: GameState, seat: int, pat: Pattern, prefer=()) -> None:
         cards = self._allocate(st, seat, pat.counter, prefer)
         for c in cards:
-            st.move(c, f"discard:{seat}")
+            self._put_discard(st, seat, c)
         self._pay(st, None, seat, pat.value)
         st.vars["cash_count"][seat] += 1
         st.log(f"{P(seat)} 兑现 {pat.name}，获得 {pat.value} 元")
@@ -404,7 +539,7 @@ class CityExchange(Game):
         }
 
     def ai_delay(self, st: GameState, prompt: dict) -> float:
-        return {"dianpao": 0.6, "tour": 0.8}.get(prompt["type"], 1.0)
+        return {"dianpao": 0.6, "tour": 0.8, "give": 0.8}.get(prompt["type"], 1.0)
 
     def describe(self, st: GameState, seat: int, action: dict) -> str:
         kind = action.get("type")
@@ -417,4 +552,6 @@ class CityExchange(Game):
             if st.vars["phase"] == "main":
                 return "发动周游列国"
             return f"弃置 {self.card_name(st, card)}" if isinstance(card, int) and card in st.cards else "付钱"
-        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "点炮响应"}.get(kind, str(kind))
+        if kind == "bid":
+            return "当地主" if action.get("take") else "不当地主"
+        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "点炮响应", "give": "交牌"}.get(kind, str(kind))

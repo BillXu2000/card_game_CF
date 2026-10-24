@@ -230,3 +230,107 @@ def test_options_are_cleaned():
     st = G.new_state(3, {"start_money": 20, "bogus": 1, "tour_loop": "yes"}, seed=0)
     assert st.options["start_money"] == 20 and st.options["tour_loop"] is True and "bogus" not in st.options
     assert st.vars["money"] == [20, 20, 20]
+
+
+# ------------------------------------------------------------------ 斗地主
+def landlord_state(seed=3):
+    st = G.new_state(3, {"mode": "landlord"}, seed=seed)
+    assert st.vars["phase"] == "bid"
+    return st
+
+
+def test_landlord_bidding_and_setup():
+    st = landlord_state()
+    assert [len(st.zone(f"hand:{i}").cards) for i in range(3)] == [4, 4, 4]
+    bonus = list(st.zone("bonus").cards)
+    first, second = st.vars["bid"]["order"][:2]
+    assert list(G.prompts(st)) == [first]
+    G.act(st, first, {"type": "bid", "take": False})
+    G.act(st, second, {"type": "bid", "take": True})
+    v = st.vars
+    assert v["landlord"] == second and v["turn"] == second and v["phase"] == "draw"
+    assert all(c in st.zone(f"hand:{second}").cards for c in bonus)
+    assert len(st.private[second]["drawn"]) == 4
+    kinds = sorted(st.attr(c, "kind") for c in st.zone(f"special:{second}").cards)
+    assert kinds == ["buy", "buy", "buy"]
+    assert [st.attr(c, "kind") for c in st.zone("special:farmers").cards] == ["tour"]
+    farmers = [i for i in range(3) if i != second]
+    assert all(v["discard_of"][i] == "discard:farmers" for i in farmers)
+
+
+def test_nobody_bids_redeals():
+    st = landlord_state()
+    for seat in list(st.vars["bid"]["order"]):
+        G.act(st, seat, {"type": "bid", "take": False})
+    assert st.vars["phase"] == "bid" and st.vars["landlord"] is None
+    assert len(st.zone("bonus").cards) == 4 and len(st.zone("deck").cards) == 96 - 16
+
+
+def test_farmer_gives_card_and_shares_pile():
+    st = landlord_state()
+    lord = st.vars["bid"]["order"][0]
+    G.act(st, lord, {"type": "bid", "take": True})
+    G.act(st, lord, {"type": "discard", "card": st.private[lord]["drawn"][0]})
+    while st.vars["phase"] == "dianpao":
+        for s in list(G.prompts(st)):
+            G.act(st, s, {"type": "dianpao", "choices": []})
+    G.act(st, lord, {"type": "end"})  # the landlord does not give a card
+    farmer = st.vars["turn"]
+    partner = G.partner(st, farmer)
+    assert farmer != lord and partner not in (None, lord, farmer)
+    G.act(st, farmer, {"type": "discard", "card": st.private[farmer]["drawn"][0]})
+    while st.vars["phase"] == "dianpao":
+        for s in list(G.prompts(st)):
+            G.act(st, s, {"type": "dianpao", "choices": []})
+    assert len(st.zone("discard:farmers").cards) == 1
+    G.act(st, farmer, {"type": "end"})
+    assert st.vars["phase"] == "give" and G.prompts(st)[farmer]["to"] == partner
+    gift = st.zone(f"hand:{farmer}").cards[0]
+    G.act(st, farmer, {"type": "give", "card": gift})
+    assert gift in st.zone(f"hand:{partner}").cards
+    assert gift in G.view(st, farmer)["zones"][f"hand:{partner}"]["cards"]
+    assert gift not in G.view(st, lord)["zones"][f"hand:{partner}"]["cards"]
+    assert st.vars["turn"] == partner
+
+
+def test_landlord_buy_price_and_no_dianpao_penalty():
+    st = landlord_state()
+    lord = st.vars["bid"]["order"][0]
+    G.act(st, lord, {"type": "bid", "take": True})
+    farmer = (lord + 1) % 3
+    # a farmer's discard in the shared pile is paid to that farmer
+    c = card_of(st, "北京")
+    st.move(c, "discard:farmers")
+    st.set_prop(c, "by", farmer)
+    st.vars.update(phase="main", money=[10, 10, 10])
+    offer = G.prompts(st)[lord]["buy"]
+    assert offer["price"] == 2 and c in offer["cards"]
+    G.act(st, lord, {"type": "buy", "cards": [c]})
+    assert st.vars["money"][lord] == 8 and st.vars["money"][farmer] == 12
+    # 点炮 costs the discarder nothing in this mode
+    st.zone(f"hand:{farmer}").cards[:] = []
+    for i in range(3):
+        for x in list(st.zone(f"hand:{i}").cards):
+            st.move(x, "deck")
+    st.move(card_of(st, "天津"), f"hand:{farmer}")
+    st.move(c, "deck")
+    st.move(c, f"hand:{lord}")
+    st.vars["phase"] = "tour"
+    st.vars["tour"] = {"by": (lord + 2) % 3, "order": [lord, farmer], "idx": 0}
+    G.act(st, lord, {"type": "tour", "card": c})
+    opts = G.prompts(st)[farmer]["options"]
+    assert opts[0]["pattern"] == "pair:北京天津" and opts[0]["cost"] == 0
+    G.act(st, farmer, {"type": "dianpao", "choices": [0]})
+    assert st.vars["money"][lord] == 8 and st.vars["money"][farmer] == 16
+
+
+def test_landlord_mode_needs_three_players():
+    with pytest.raises(ValueError):
+        G.new_state(4, {"mode": "landlord"}, seed=0)
+
+
+def test_landlord_ai_games():
+    for seed in range(5):
+        st = play_ai(G.new_state(3, {"mode": "landlord"}, seed=seed))
+        assert st.vars["landlord"] is not None and st.vars["winners"]
+        assert sum(len(z.cards) for z in st.zones.values()) == 108
