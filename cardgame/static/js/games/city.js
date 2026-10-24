@@ -344,7 +344,8 @@ function patternPanel(info, myCities, rerender) {
   det.open = patternUi.open;
   det.ontoggle = () => { patternUi.open = det.open; };
   det.innerHTML = "<summary>Pattern 速查（按还差几张排序）</summary>";
-  const rows = info.patterns.map((p) => {
+  // 四个X (four of one city) are left out: they are obvious from the hand
+  const rows = info.patterns.filter((p) => !p.id.startsWith("four:")).map((p) => {
     let missing = 0;
     for (const [c, k] of Object.entries(p.need)) missing += Math.max(0, k - (have[c] ?? 0));
     return { p, missing };
@@ -354,13 +355,13 @@ function patternPanel(info, myCities, rerender) {
   for (const { p, missing } of shown) {
     const tr = table.insertRow();
     tr.className = missing === 0 ? "ready" : missing === 1 ? "near" : "";
-    tr.onmouseenter = () => hoverPattern(p.id);
-    tr.onmouseleave = () => hoverPattern(null);
     tr.insertCell().textContent = p.name;
     tr.insertCell().textContent = p.value;
     const cities = tr.insertCell();
     for (const [c, k] of Object.entries(p.need)) {
-      cities.append(span("pc " + PROVINCE_CLASS[provinceOf[c]] + ((have[c] ?? 0) >= k ? " ok" : ""), k > 1 ? `${c}×${k}` : c));
+      // each city behaves like a card of it when hovered
+      cities.append(linkToMap(span("pc " + PROVINCE_CLASS[provinceOf[c]] + ((have[c] ?? 0) >= k ? " ok" : ""),
+        k > 1 ? `${c}×${k}` : c), { city: c }));
     }
     tr.insertCell().textContent = missing ? `差 ${missing}` : "可兑现";
   }
