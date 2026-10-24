@@ -207,11 +207,6 @@ function buildLegend() {
   body.innerHTML = "";
   body.append(legend());
   if (SHOW_INSETS) body.append(inset("yrd"), inset("prd"));
-  body.append(inset("locator"));
-  const src = document.createElement("div");
-  src.className = "cm-source";
-  src.textContent = `数据：${data.source}。${data.projection}。成襄铁路为规则书中的线路，沿宝成、阳安、襄渝铁路示意。`;
-  body.append(src);
 }
 
 function inset(name) {
@@ -457,7 +452,13 @@ function legend() {
     b.title = `${p.name}：${Object.keys(p.need).join("、")}（${p.value} 元）`;
     const s = el("svg", { width: 48, height: 32, viewBox: "0 0 24 16" });
     row.draw?.(s);
-    b.append(s, document.createTextNode(row.text ?? p.name.replace(/[【】]/g, "")));
+    const name = document.createElement("span");
+    name.className = "cm-legend-name";
+    name.textContent = row.text ?? p.name.replace(/[【】]/g, "");
+    const value = document.createElement("span");
+    value.className = "cm-legend-value";
+    value.textContent = p.value;
+    b.append(s, name, value);
     b.onmouseenter = () => hoverPattern(p.id);
     b.onmouseleave = () => hoverPattern(null);
     b.onclick = () => { current.pinned = current.pinned === p.id ? null : p.id; refreshHighlight(); };
