@@ -273,6 +273,11 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .c-actions button.ghost { background: #fff; }
 .c-actions button.gold { background: #f5b301; border-color: #f5b301; color: #222; font-weight: 700; }
 .c-hint { width: 100%; text-align: center; font-size: 13px; color: #ffe27a; }
+.c-claim {
+  width: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+  padding: 6px 10px; border-radius: 10px; background: rgba(245, 179, 1, .22); border: 2px solid #f5b301;
+}
+.c-claim-title { font-weight: 800; color: #ffe27a; }
 .city-table .score-sheet { z-index: 5; }
 
 .c-below { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; align-items: start; max-width: 1500px; width: 100%; margin: 0 auto; }

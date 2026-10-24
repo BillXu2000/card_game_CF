@@ -2,8 +2,10 @@
 
 Turn: draw 3 and discard one of them (or cash a Pattern containing all three
 instead), then in any order: buy back (≤1), tour (周游列国), forced buy
-(强买, ≤1), cash a Pattern (≤1), end the turn.  Every discard opens a
-reaction window in which other players may claim 点炮.
+(强买, ≤1), cash a Pattern (≤1), end the turn.  Every discard gives the
+players who could use it a 点炮 offer.  Offers do not block the game: the
+player whose turn it is keeps playing while others claim or decline, and
+offers lapse when the turn ends or the card leaves the discard pile.
 
 Points the rule book leaves open are room options (see ``option_specs``).
 """
@@ -111,7 +113,8 @@ class CityExchange(Game):
             phase=None,
             used={},
             drawn_count=0,
-            pending=None,
+            offers=[],        # open 点炮 offers, see _open_offer
+            next_offer=0,
             tour=None,
             cash_count=[0] * n,
             dianpao_count=[0] * n,
@@ -257,6 +260,7 @@ class CityExchange(Game):
         v = st.vars
         seat = v["turn"]
         st.private[seat].pop("drawn", None)
+        v["offers"] = []  # 点炮 offers not taken during the turn lapse
         if not st.zone("deck").cards:
             lord = v.get("landlord")
             if lord is not None and st.options["landlord_score"] == "sum":
@@ -276,6 +280,19 @@ class CityExchange(Game):
 
     # --------------------------------------------------------------- prompts
     def prompts(self, st: GameState) -> dict[int, dict]:
+        out = self._flow_prompts(st)
+        # 点炮 offers are answered alongside the normal flow
+        for seat in range(st.num_players):
+            claims = self._claims(st, seat)
+            if not claims:
+                continue
+            if seat in out:
+                out[seat] = {**out[seat], "claims": claims}
+            else:
+                out[seat] = {"type": "dianpao", "claims": claims}
+        return out
+
+    def _flow_prompts(self, st: GameState) -> dict[int, dict]:
         v = st.vars
         phase = v["phase"]
         seat = v["turn"]
@@ -284,11 +301,6 @@ class CityExchange(Game):
             return {seat: {"type": "draw", "drawn": list(drawn), "cash": self._draw_cash_options(st, seat)}}
         if phase == "main":
             return {seat: self._main_prompt(st, seat)}
-        if phase == "dianpao":
-            p = v["pending"]
-            return {s: {"type": "dianpao", "cards": list(p["cards"]), "by": p["by"],
-                        "options": self._dianpao_options(st, s)}
-                    for s in p["eligible"] if "dianpao_choice" not in st.private[s]}
         if phase == "tour":
             t = v["tour"]
             r = t["order"][t["idx"]]
@@ -299,6 +311,17 @@ class CityExchange(Game):
         if phase == "give":
             return {seat: {"type": "give", "to": self.partner(st, seat), "cards": list(self.hand(st, seat))}}
         return {}
+
+    def _claims(self, st: GameState, seat: int) -> list[dict]:
+        """Open 点炮 offers ``seat`` can still take."""
+        out = []
+        for offer in st.vars["offers"]:
+            if seat in offer["eligible"] and seat not in offer["answered"]:
+                options = self._dianpao_options(st, seat, offer)
+                if options:
+                    out.append({"offer": offer["id"], "by": offer["by"], "cards": self._live_cards(st, offer),
+                                "options": options})
+        return out
 
     def _draw_cash_options(self, st: GameState, seat: int) -> list[dict]:
         drawn_need = self.cities(st, st.private[seat]["drawn"])
@@ -323,10 +346,14 @@ class CityExchange(Game):
         p["tour"] = bool(self.unused(st, seat, "tour"))
         return p
 
-    def _dianpao_options(self, st: GameState, seat: int) -> list[dict]:
+    def _live_cards(self, st: GameState, offer: dict) -> list[int]:
+        """Offered cards still lying in the pile they were discarded to."""
+        return [c for c in offer["cards"] if st.where(c) == offer["zone"]]
+
+    def _dianpao_options(self, st: GameState, seat: int, offer: dict) -> list[dict]:
         hand = self.cities(st, self.hand(st, seat))
         out = []
-        for c in st.vars["pending"]["cards"]:
+        for c in self._live_cards(st, offer):
             for p in claimable(hand, st.attr(c, "city")):
                 out.append({"card": c, **pattern_option(p), "gain": p.value * 2 // 3, "cost": self._dianpao_cost(st, p)})
         return out
@@ -338,6 +365,8 @@ class CityExchange(Game):
     def apply(self, st: GameState, seat: int, action: dict) -> None:
         phase = st.vars["phase"]
         kind = action["type"]
+        if kind == "dianpao" and phase != "over":
+            return self._act_dianpao(st, seat, action.get("offer"), action.get("choices"))
         if phase == "draw":
             if kind == "discard":
                 return self._act_draw_discard(st, seat, action.get("card"))
@@ -348,8 +377,6 @@ class CityExchange(Game):
                        "tour": self._act_tour, "end": self._act_end}.get(kind)
             if handler:
                 return handler(st, seat, action)
-        elif phase == "dianpao" and kind == "dianpao":
-            return self._act_dianpao(st, seat, action.get("choices"))
         elif phase == "tour" and kind == "tour":
             return self._act_tour_response(st, seat, action.get("card"))
         elif phase == "bid" and kind == "bid":
@@ -363,7 +390,7 @@ class CityExchange(Game):
         if card not in st.private[seat]["drawn"]:
             raise IllegalAction("只能弃置本回合摸到的牌")
         st.vars["phase"] = "main"
-        self._discard(st, seat, card, resume="main")
+        self._discard(st, seat, card)
 
     def _act_draw_cash(self, st, seat, pid) -> None:
         if pid not in {o["pattern"] for o in self._draw_cash_options(st, seat)}:
@@ -442,16 +469,14 @@ class CityExchange(Game):
         if card not in self.hand(st, seat):
             raise IllegalAction("只能弃置自己的手牌")
         t["idx"] += 1
-        resume = "tour"
         if t["idx"] == len(t["order"]):
             if st.options["tour_loop"]:
                 t["idx"] = 0
             else:
                 v["tour"] = None
-                resume = "main"
+                v["phase"] = "main"
                 st.log("所有人都弃了牌，周游列国结束")
-        v["phase"] = resume
-        self._discard(st, seat, card, resume=resume)
+        self._discard(st, seat, card)
 
     # ------------------------------------------------------ discard & claims
     def _put_discard(self, st: GameState, seat: int, card: int) -> None:
@@ -460,25 +485,25 @@ class CityExchange(Game):
         if st.zone(zone).owner is None:
             st.set_prop(card, "by", seat)
 
-    def _discard(self, st: GameState, seat: int, card: int, resume: str) -> None:
+    def _discard(self, st: GameState, seat: int, card: int) -> None:
         self._put_discard(st, seat, card)
         st.vars["last_discard"] = {"card": card, "by": seat}
         st.log(f"{P(seat)} 弃置 {self.card_name(st, card)}")
-        self._open_window(st, seat, [card], resume)
+        self._open_offer(st, seat, [card])
 
-    def _open_window(self, st: GameState, by: int, cards: list[int], resume: str) -> None:
+    def _open_offer(self, st: GameState, by: int, cards: list[int]) -> None:
+        """Let every player who could use ``cards`` claim 点炮, without pausing the game."""
         v = st.vars
-        v["pending"] = {"by": by, "cards": cards, "eligible": [], "resume": resume}
+        offer = {"id": v["next_offer"], "by": by, "cards": list(cards), "zone": st.where(cards[0]),
+                 "eligible": [], "answered": []}
         n = st.num_players
-        eligible = [(by + k) % n for k in range(1, n) if self._dianpao_options(st, (by + k) % n)]
-        if not eligible:
-            v["pending"] = None
-            return
-        v["pending"]["eligible"] = eligible
-        v["phase"] = "dianpao"
+        offer["eligible"] = [(by + k) % n for k in range(1, n) if self._dianpao_options(st, (by + k) % n, offer)]
+        if offer["eligible"]:
+            v["next_offer"] += 1
+            v["offers"].append(offer)
 
-    def _choice_allocation(self, st: GameState, seat: int, choices) -> list[tuple[dict, list[int]]]:
-        opts = self._dianpao_options(st, seat)
+    def _choice_allocation(self, st: GameState, seat: int, offer: dict, choices) -> list[tuple[dict, Counter]]:
+        opts = self._dianpao_options(st, seat, offer)
         if (not isinstance(choices, list) or len(set(choices)) != len(choices)
                 or any(not isinstance(i, int) or not 0 <= i < len(opts) for i in choices)):
             raise IllegalAction("选择无效")
@@ -494,27 +519,26 @@ class CityExchange(Game):
             raise IllegalAction("这些 Pattern 不能同时用你的手牌组成")
         return chosen
 
-    def _act_dianpao(self, st, seat, choices) -> None:
-        self._choice_allocation(st, seat, choices)  # validate now
-        st.private[seat]["dianpao_choice"] = list(choices)
-        p = st.vars["pending"]
-        if any("dianpao_choice" not in st.private[s] for s in p["eligible"]):
-            return
-        for s in p["eligible"]:  # already in order after the discarder
-            picks = st.private[s].pop("dianpao_choice")
-            for o, need in self._choice_allocation(st, s, picks):
-                cards = self._allocate(st, s, need)
-                for c in cards:
-                    self._put_discard(st, s, c)
-                pat = PATTERN_BY_ID[o["pattern"]]
-                cost = self._dianpao_cost(st, pat)
-                self._pay(st, p["by"], None, cost)
-                self._pay(st, None, s, pat.value * 2 // 3)
-                st.vars["dianpao_count"][p["by"]] += 1
-                st.log(f"{P(p['by'])} 点炮：{P(s)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
-                       f"{P(s)} +{pat.value * 2 // 3}，" + (f"{P(p['by'])} -{cost}" if cost else "弃牌者不扣钱"))
-        st.vars["phase"] = p["resume"]
-        st.vars["pending"] = None
+    def _act_dianpao(self, st, seat, offer_id, choices) -> None:
+        offer = next((o for o in st.vars["offers"] if o["id"] == offer_id), None)
+        if offer is None or seat not in offer["eligible"] or seat in offer["answered"]:
+            raise IllegalAction("这次点炮机会已经过去了")
+        if not self._dianpao_options(st, seat, offer):
+            raise IllegalAction("已经不能点炮了")
+        by = offer["by"]
+        for o, need in self._choice_allocation(st, seat, offer, choices):
+            for c in self._allocate(st, seat, need):
+                self._put_discard(st, seat, c)
+            pat = PATTERN_BY_ID[o["pattern"]]
+            cost = self._dianpao_cost(st, pat)
+            self._pay(st, by, None, cost)
+            self._pay(st, None, seat, pat.value * 2 // 3)
+            st.vars["dianpao_count"][by] += 1
+            st.log(f"{P(by)} 点炮：{P(seat)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
+                   f"{P(seat)} +{pat.value * 2 // 3}，" + (f"{P(by)} -{cost}" if cost else "弃牌者不扣钱"))
+        offer["answered"].append(seat)
+        if set(offer["answered"]) >= set(offer["eligible"]):
+            st.vars["offers"].remove(offer)
 
     def _cash(self, st: GameState, seat: int, pat: Pattern, prefer=()) -> None:
         cards = self._allocate(st, seat, pat.counter, prefer)
@@ -524,7 +548,7 @@ class CityExchange(Game):
         st.vars["cash_count"][seat] += 1
         st.log(f"{P(seat)} 兑现 {pat.name}，获得 {pat.value} 元")
         if st.options["cash_dianpao"]:
-            self._open_window(st, seat, cards, st.vars["phase"])
+            self._open_offer(st, seat, cards)
 
     # ------------------------------------------------------------------- misc
     def is_over(self, st: GameState) -> bool:
@@ -541,7 +565,9 @@ class CityExchange(Game):
         }
 
     def ai_delay(self, st: GameState, prompt: dict) -> float:
-        return {"dianpao": 0.6, "tour": 0.8, "give": 0.8}.get(prompt["type"], 1.0)
+        if prompt.get("claims"):
+            return 0.6
+        return {"tour": 0.8, "give": 0.8}.get(prompt["type"], 1.0)
 
     def describe(self, st: GameState, seat: int, action: dict) -> str:
         kind = action.get("type")

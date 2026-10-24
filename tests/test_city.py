@@ -37,6 +37,13 @@ def cities(st, zone):
     return sorted(st.attr(c, "city") for c in st.zone(zone).cards)
 
 
+def decline_offers(st):
+    """Answer every open 点炮 offer with 'no'."""
+    for seat, prompt in list(G.prompts(st).items()):
+        for claim in prompt.get("claims", []):
+            G.act(st, seat, {"type": "dianpao", "offer": claim["offer"], "choices": []})
+
+
 def play_ai(st):
     ai = G.make_ai()
     steps = 0
@@ -82,7 +89,7 @@ def test_draw_must_discard_a_drawn_card():
     assert all(c is None for c in view["zones"][f"hand:{seat}"]["cards"])
     assert not set(drawn) & set(map(int, view["cards"]))
     G.act(st, seat, {"type": "discard", "card": drawn[0]})
-    assert st.zone(f"discard:{seat}").cards == [drawn[0]] or st.vars["phase"] == "dianpao"
+    assert st.zone(f"discard:{seat}").cards == [drawn[0]] and st.vars["phase"] == "main"
 
 
 def test_draw_cash_with_all_three_drawn():
@@ -151,16 +158,18 @@ def test_dianpao_rulebook_example():
     st.vars["phase"] = "tour"
     st.vars["tour"] = {"by": 2, "order": [0, 1], "idx": 0}
     G.act(st, 0, {"type": "tour", "card": st.zone("hand:0").cards[0]})
-    assert st.vars["phase"] == "dianpao"
-    prompts = G.prompts(st)
-    assert set(prompts) == {1}
-    names = [o["pattern"] for o in prompts[1]["options"]]
+    # the tour goes on: seat 1 is asked to discard and may claim 点炮 at the same time
+    prompt = G.prompts(st)[1]
+    assert prompt["type"] == "tour" and len(prompt["claims"]) == 1
+    claim = prompt["claims"][0]
+    names = [o["pattern"] for o in claim["options"]]
     both = [names.index("special:古来要塞"), names.index("special:泉岭大球")]
-    G.act(st, 1, {"type": "dianpao", "choices": both})
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": both})
     assert st.vars["money"][1] == 16 + 16 and st.vars["money"][0] == -16
     assert cities(st, "hand:1") == []
     assert cities(st, "discard:0") == ["广元"]
-    assert st.vars["phase"] == "tour" and G.prompts(st) == {1: G.prompts(st)[1]}
+    assert st.vars["offers"] == []
+    assert G.prompts(st) == {1: {"type": "tour", "by": 2, "cards": [], "fine": 6}}
 
 
 def test_dianpao_incompatible_choices_rejected():
@@ -168,12 +177,44 @@ def test_dianpao_incompatible_choices_rejected():
     st.vars["phase"] = "tour"
     st.vars["tour"] = {"by": 2, "order": [0, 1], "idx": 0}
     G.act(st, 0, {"type": "tour", "card": st.zone("hand:0").cards[0]})
-    opts = G.prompts(st)[1]["options"]
-    assert [o["pattern"] for o in opts] == ["four:北京"]
+    claim = G.prompts(st)[1]["claims"][0]
+    assert [o["pattern"] for o in claim["options"]] == ["four:北京"]
     with pytest.raises(IllegalAction):
-        G.act(st, 1, {"type": "dianpao", "choices": [0, 0]})
-    G.act(st, 1, {"type": "dianpao", "choices": []})
-    assert st.vars["money"] == [0, 0, 0]
+        G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0, 0]})
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": []})
+    assert st.vars["money"] == [0, 0, 0] and st.vars["offers"] == []
+
+
+def test_dianpao_does_not_block_and_lapses_at_turn_end():
+    st = setup(hands={0: ["北京"], 1: ["天津"], 2: ["天津"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    G.act(st, 0, {"type": "discard", "card": st.zone("hand:0").cards[0]})
+    prompts = G.prompts(st)
+    # the discarder carries on while both others hold an offer
+    assert prompts[0]["type"] == "main" and "claims" not in prompts[0]
+    assert prompts[1]["type"] == prompts[2]["type"] == "dianpao"
+    offer = prompts[1]["claims"][0]["offer"]
+    G.act(st, 1, {"type": "dianpao", "offer": offer, "choices": [0]})  # first come, first served
+    assert st.vars["money"] == [-2, 4, 0]
+    assert set(G.prompts(st)) == {0, 2}
+    G.act(st, 0, {"type": "end"})
+    assert st.vars["offers"] == [] and set(G.prompts(st)) == {1}
+    with pytest.raises(IllegalAction):
+        G.act(st, 2, {"type": "dianpao", "offer": offer, "choices": [0]})
+
+
+def test_dianpao_offer_ends_when_card_is_bought():
+    st = setup(hands={0: ["北京"], 1: ["天津"]}, money=[10, 0, 10])
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    beijing = st.zone("hand:0").cards[0]
+    G.act(st, 0, {"type": "discard", "card": beijing})
+    offer = G.prompts(st)[1]["claims"][0]["offer"]
+    G.act(st, 0, {"type": "buy", "cards": [beijing]})  # buys its own discard back
+    assert 1 not in G.prompts(st)
+    with pytest.raises(IllegalAction):
+        G.act(st, 1, {"type": "dianpao", "offer": offer, "choices": [0]})
 
 
 def test_tour_pays_fine_or_loops():
@@ -271,17 +312,13 @@ def test_farmer_gives_card_and_shares_pile():
     lord = st.vars["bid"]["order"][0]
     G.act(st, lord, {"type": "bid", "take": True})
     G.act(st, lord, {"type": "discard", "card": st.private[lord]["drawn"][0]})
-    while st.vars["phase"] == "dianpao":
-        for s in list(G.prompts(st)):
-            G.act(st, s, {"type": "dianpao", "choices": []})
+    decline_offers(st)
     G.act(st, lord, {"type": "end"})  # the landlord does not give a card
     farmer = st.vars["turn"]
     partner = G.partner(st, farmer)
     assert farmer != lord and partner not in (None, lord, farmer)
     G.act(st, farmer, {"type": "discard", "card": st.private[farmer]["drawn"][0]})
-    while st.vars["phase"] == "dianpao":
-        for s in list(G.prompts(st)):
-            G.act(st, s, {"type": "dianpao", "choices": []})
+    decline_offers(st)
     assert len(st.zone("discard:farmers").cards) == 1
     G.act(st, farmer, {"type": "end"})
     assert st.vars["phase"] == "give" and G.prompts(st)[farmer]["to"] == partner
@@ -318,9 +355,10 @@ def test_landlord_buy_price_and_no_dianpao_penalty():
     st.vars["phase"] = "tour"
     st.vars["tour"] = {"by": (lord + 2) % 3, "order": [lord, farmer], "idx": 0}
     G.act(st, lord, {"type": "tour", "card": c})
-    opts = G.prompts(st)[farmer]["options"]
+    claim = G.prompts(st)[farmer]["claims"][0]
+    opts = claim["options"]
     assert opts[0]["pattern"] == "pair:北京天津" and opts[0]["cost"] == 0
-    G.act(st, farmer, {"type": "dianpao", "choices": [0]})
+    G.act(st, farmer, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
     assert st.vars["money"][lord] == 8 and st.vars["money"][farmer] == 16
 
 

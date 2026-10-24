@@ -18,15 +18,19 @@ const resizer = typeof ResizeObserver === "undefined" ? null
 const patternUi = { open: false, all: false };
 
 // UI state kept between renders (reset when the prompt changes)
-let ui = { key: null, mode: null, picked: new Set(), selected: null, dianpao: new Set() };
+let ui = { key: null, mode: null, picked: new Set(), selected: null, claims: {} };
 
 export function render(el, ctx) {
   const { view, prompt } = ctx;
   const v = view.vars;
   const n = view.num_players;
   const me = ctx.seat;
-  const key = `${view.seq}:${prompt?.type}`;
-  if (key !== ui.key) ui = { key, mode: null, picked: new Set(), selected: null, dianpao: new Set() };
+  // other players act in parallel (点炮), so selections survive their moves and
+  // only reset when this player's own step changes
+  const key = `${v.turn_no}:${v.phase}:${v.tour?.idx ?? ""}:${prompt?.type}`;
+  if (key !== ui.key) ui = { key, mode: null, picked: new Set(), selected: null, claims: ui.claims };
+  const open = new Set((prompt?.claims ?? []).map((c) => c.offer));
+  for (const id of Object.keys(ui.claims)) if (!open.has(+id)) delete ui.claims[id];
   const rerender = () => render(el, ctx);
   const name = (i) => ctx.seatName(i);
   const card = (id) => view.cards[id];
@@ -93,7 +97,7 @@ export function render(el, ctx) {
       if (!ids.length) cards.append(span("c-empty", "空"));
       for (const id of ids) {
         const m = miniCard(card(id));
-        if (v.pending?.cards.includes(id) || v.last_discard?.card === id) m.classList.add("hot");
+        if (v.offers.some((o) => o.cards.includes(id)) || v.last_discard?.card === id) m.classList.add("hot");
         if (ui.mode === "buyback" && prompt?.buyback.includes(id)) {
           m.classList.add("pick");
           m.title = "点击回购这张牌";
@@ -129,11 +133,6 @@ export function render(el, ctx) {
     focus.append(span("c-label", "翻开的牌"));
     const row = div("c-row");
     for (const id of view.zones.bonus.cards) row.append(bigCard(card(id)));
-    focus.append(row);
-  } else if (v.pending) {
-    focus.append(span("c-label", `${name(v.pending.by)} 刚弃置`));
-    const row = div("c-row");
-    for (const id of v.pending.cards) row.append(bigCard(card(id)));
     focus.append(row);
   } else if (v.last_discard && view.cards[v.last_discard.card]
              && view.zones[v.discard_of[v.last_discard.by]].cards.includes(v.last_discard.card)) {
@@ -211,19 +210,19 @@ export function render(el, ctx) {
 function statusText(ctx, v, prompt, name) {
   if (v.phase === "over") return "游戏结束";
   if (prompt) {
+    if (prompt.type === "dianpao") return "可以点炮！在下方选择要兑现的 Pattern，或者不点";
+    const extra = prompt.claims?.length ? "（另有点炮机会，见下方）" : "";
     return {
       draw: "摸牌阶段：点选一张本回合摸到的牌（蓝框）弃置",
       main: "出牌阶段：可以回购、出游、强买、兑现（顺序随意），然后结束回合",
-      dianpao: `${name(prompt.by)} 弃的牌能让你兑现 Pattern（点炮），要兑现吗？`,
       tour: `${name(prompt.by)} 发动周游列国：点选一张手牌弃置，或交给 TA ${prompt.fine} 元`,
       bid: "要当地主吗？地主获得中间翻开的牌",
       give: `回合结束：点选一张手牌，背面朝上交给 ${name(prompt.to)}`,
-    }[prompt.type];
+    }[prompt.type] + extra;
   }
   const waiting = ctx.room.waiting.map(name).join("、");
   if (v.phase === "bid") return `等待 ${waiting} 决定是否当地主…`;
   if (v.phase === "give") return `等待 ${name(v.turn)} 交牌…`;
-  if (v.phase === "dianpao") return `等待 ${waiting} 决定是否点炮兑现…`;
   if (v.phase === "tour") return `周游列国：等待 ${waiting}…`;
   return `等待 ${name(v.turn)} 行动…`;
 }
@@ -235,6 +234,25 @@ function buildActions(box, ctx, prompt, rerender, highlight) {
     b.onmouseenter = () => { highlight(pattern); hoverPattern(pattern); };
     b.onmouseleave = () => { highlight(null); hoverPattern(null); };
   };
+  // 点炮 offers come first; the rest of the turn goes on independently
+  for (const claim of prompt.claims ?? []) {
+    const sel = (ui.claims[claim.offer] ??= new Set());
+    const row = div("c-claim");
+    const cards = claim.cards.map((id) => ctx.view.cards[id].city).join("、");
+    row.append(span("c-claim-title", `点炮！${ctx.seatName(claim.by)} 弃了 ${cards}：`));
+    claim.options.forEach((o, i) => {
+      const on = sel.has(i);
+      const b = button(`${on ? "✓ " : ""}${o.name} +${o.gain}` + (o.cost ? `（弃牌者 −${o.cost}）` : ""), () => {
+        on ? sel.delete(i) : sel.add(i);
+        rerender();
+      }, false, on ? "gold" : "ghost");
+      hoverable(b, o.pattern);
+      row.append(b);
+    });
+    row.append(button("兑现所选", () => act({ type: "dianpao", offer: claim.offer, choices: [...sel] }), !sel.size));
+    row.append(button("不点", () => act({ type: "dianpao", offer: claim.offer, choices: [] }), false, "ghost"));
+    box.append(row);
+  }
   if (prompt.type === "draw") {
     box.append(button("弃置所选", () => act({ type: "discard", card: ui.selected }), ui.selected == null));
     for (const o of prompt.cash) {
@@ -259,18 +277,6 @@ function buildActions(box, ctx, prompt, rerender, highlight) {
     if (ui.mode) box.append(span("c-hint", ui.mode === "buy"
       ? `点击桌上弃牌区里要买的牌（黄色虚线框，最多 ${prompt.buy.max} 张），钱付给弃这张牌的人`
       : "点击你弃牌区里要收回的牌（黄色虚线框）"));
-  } else if (prompt.type === "dianpao") {
-    prompt.options.forEach((o, i) => {
-      const on = ui.dianpao.has(i);
-      const b = button(`${on ? "✓ " : ""}${o.name} +${o.gain}` + (o.cost ? `（弃牌者 −${o.cost}）` : ""), () => {
-        on ? ui.dianpao.delete(i) : ui.dianpao.add(i);
-        rerender();
-      }, false, on ? "gold" : "ghost");
-      hoverable(b, o.pattern);
-      box.append(b);
-    });
-    box.append(button("兑现所选", () => act({ type: "dianpao", choices: [...ui.dianpao] }), !ui.dianpao.size));
-    box.append(button("不兑现", () => act({ type: "dianpao", choices: [] }), false, "ghost"));
   } else if (prompt.type === "tour") {
     box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
     box.append(button(`不弃，付 ${prompt.fine} 元`, () => act({ type: "tour", card: null }), false, "ghost"));
