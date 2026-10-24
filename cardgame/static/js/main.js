@@ -234,6 +234,7 @@ function renderRoom() {
   $("btn-history").disabled = !r.history_len;
   $("btn-export").disabled = r.status === "waiting";
   renderSeats(r);
+  renderOptions(r);
   renderGame(r);
 }
 
@@ -270,6 +271,48 @@ function renderSeats(r) {
     sel.onchange = () => send({ op: "players", code: r.code, n: +sel.value });
     box.append(sel);
   }
+}
+
+function renderOptions(r) {
+  const box = $("options");
+  box.innerHTML = "";
+  if (!r.option_specs.length) return;
+  const editable = r.is_host && r.status !== "playing";
+  for (const spec of r.option_specs) {
+    const label = document.createElement("label");
+    label.className = "opt";
+    const value = r.options[spec.key];
+    let input;
+    if (spec.type === "bool") {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = value;
+      input.onchange = () => setOption(r, spec.key, input.checked);
+      label.append(input, document.createTextNode(spec.label));
+    } else {
+      if (spec.type === "choice") {
+        input = document.createElement("select");
+        for (const [v, l] of spec.choices) input.add(new Option(l, v));
+        input.value = value;
+        input.onchange = () => setOption(r, spec.key, spec.choices.find((c) => String(c[0]) === input.value)[0]);
+      } else {
+        input = document.createElement("input");
+        input.type = "number";
+        input.value = value;
+        if (spec.min != null) input.min = spec.min;
+        if (spec.max != null) input.max = spec.max;
+        input.onchange = () => setOption(r, spec.key, Math.round(+input.value));
+      }
+      label.append(document.createTextNode(spec.label + "："), input);
+    }
+    input.disabled = !editable;
+    if (spec.help) label.title = spec.help;
+    box.append(label);
+  }
+}
+
+function setOption(r, key, value) {
+  send({ op: "options", code: r.code, options: { [key]: value } });
 }
 
 function tag(text) {

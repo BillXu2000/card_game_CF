@@ -92,8 +92,8 @@ class Hearts(Game):
     min_players = max_players = 4
     ai_names = ("Pauline", "Michele", "Ben")
 
-    def default_options(self) -> dict:
-        return {"end_score": 100}
+    def option_specs(self) -> list[dict]:
+        return [{"key": "end_score", "label": "结束分数", "type": "int", "default": 100, "min": 10, "max": 1000}]
 
     # ------------------------------------------------------------------ setup
     def setup(self, st: GameState) -> None:
