@@ -14,9 +14,6 @@ const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口�
 const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
 const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
 const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
-// 中山 sits just south of 广州: point its hammer away so 广州's flame stays visible
-const HAMMER_TURN = { 中山: 220 };
-
 // a city with special icons is drawn as those icons (stacked when there are two)
 function iconsOf(city) {
   return [PORTS.includes(city) && anchor, FURNACES.includes(city) && fire,
@@ -285,7 +282,7 @@ function drawCities(svg, k) {
     const icons = iconsOf(city);
     if (icons.length) {
       // the icons replace the city sign
-      for (const draw of icons) draw(node, 0, 0, undefined, city);
+      for (const draw of icons) draw(node, 0, 0);
     } else if (city === CAPITAL) {
       el("circle", { r: 5.5, class: "sym-capital-ring" }, node);
       el("path", { d: star(4.6), class: "sym-capital" }, node);
@@ -331,9 +328,8 @@ function fire(parent, x, y, size = 1.15) {
 }
 
 // 【泉岭大球】 hammer: big, dark head on a wooden handle, with a white outline
-function hammer(parent, x, y, size = 1.3, city = null) {
-  const turn = HAMMER_TURN[city] ?? -40;
-  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(${turn}) translate(0,-0.6)` }, parent);
+function hammer(parent, x, y, size = 1.3) {
+  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(-40) translate(0,-0.6)` }, parent);
   el("rect", { x: -1.1, y: -2.6, width: 2.2, height: 9.5, rx: 0.6, class: "handle" }, g);
   el("rect", { x: -5, y: -5.8, width: 10, height: 4, rx: 0.8, class: "head" }, g);
   return g;
