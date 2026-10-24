@@ -225,7 +225,15 @@ class Server:
         return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
     def make_app(self) -> web.Application:
-        app = web.Application()
+        @web.middleware
+        async def revalidate_static(request: web.Request, handler):
+            # without this, browsers keep stale JS/CSS after an update
+            resp = await handler(request)
+            if request.path.startswith("/static/"):
+                resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
+        app = web.Application(middlewares=[revalidate_static])
         app.router.add_get("/", self.index)
         app.router.add_get("/ws", self.ws_handler)
         app.router.add_static("/static/", STATIC)

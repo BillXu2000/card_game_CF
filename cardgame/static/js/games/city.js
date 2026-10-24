@@ -1,9 +1,13 @@
-// 城市交易所 table.
+// 城市交易所 table: a card table like the Hearts one.  You sit at the bottom
+// with your hand; the other players sit around the felt with their money,
+// card backs, special cards and discard piles; the deck and the card just
+// discarded are in the middle.
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
+const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
 
 // pattern reference panel state (kept for the whole session)
-const patternUi = { open: true, all: false };
+const patternUi = { open: false, all: false };
 
 // UI state kept between renders (reset when the prompt changes)
 let ui = { key: null, mode: null, picked: new Set(), selected: null, dianpao: new Set() };
@@ -18,217 +22,279 @@ export function render(el, ctx) {
   const rerender = () => render(el, ctx);
   const name = (i) => ctx.seatName(i);
   const card = (id) => view.cards[id];
+  const info = ctx.room.static;
+  const cityOrder = Object.values(info.provinces).flat();
 
   el.className = "game city";
   el.innerHTML = "";
+  const felt = div(`felt city-felt n${n}`);
+  el.append(felt);
 
-  // ---- status
-  const status = div("c-status");
-  const deck = view.zones.deck.cards.length;
-  status.innerHTML = `<span>第 ${v.turn_no} 回合</span><span>牌堆 ${deck} 张</span>`;
-  const msg = document.createElement("b");
-  msg.textContent = statusText(ctx, v, prompt, name);
-  status.append(msg);
-  if (v.phase === "bid") {
-    const bonus = div("c-discard");
-    bonus.append(span("muted", "翻开的牌："));
-    for (const id of view.zones.bonus.cards) bonus.append(chip(card(id)));
-    status.append(bonus);
-  }
-  el.append(status);
-
-  // ---- players, starting with me
-  const players = div("c-players");
-  const order = [...Array(n).keys()].map((k) => ((me ?? 0) + k) % n);
+  // ---- seats around the table
+  const base = me ?? 0;
   const pileShownBy = {};
-  for (const i of order) {
-    const p = div("c-player" + (v.turn === i ? " turn" : "") + (i === me ? " me" : ""));
+  const mySeatBox = seatBox(base, "bottom");  // goes above my hand
+  for (let k = 1; k < n; k++) felt.append(seatBox((base + k) % n, POS[n][k]));
+
+  function seatBox(i, pos) {
+    const box = div(`c-seat c-${pos}` + (v.turn === i && v.phase !== "over" ? " turn" : ""));
     const head = div("c-head");
-    const nm = document.createElement("b");
-    nm.textContent = name(i);
-    const money = span("c-money", `${v.money[i]} 元`);
-    const handCount = span("muted", `手牌 ${view.zones[`hand:${i}`].cards.length}`);
-    head.append(nm);
+    head.append(span("c-name", name(i)));
+    if (ctx.room.waiting.includes(i) && v.turn !== i) head.append(span("c-thinking", "思考中"));
     if (v.landlord != null) head.append(span("c-role " + (i === v.landlord ? "lord" : "farmer"), i === v.landlord ? "地主" : "农民"));
-    head.append(money, handCount);
-    for (const id of view.zones[v.special_of[i]].cards) {
-      const c = card(id);
-      const s = span("c-special " + c.kind + (c.used ? " used" : ""), c.kind === "tour" ? "周游" : "强买");
-      s.title = c.name + (c.used ? "（已使用）" : "");
-      head.append(s);
-    }
-    p.append(head);
-    // known cards in another player's hand (bought / bought back)
+    head.append(span("c-money", `${v.money[i]} 元`));
+    box.append(head);
+
+    // other players' hands: card backs, plus cards everybody saw them take
     if (i !== me) {
-      const known = view.zones[`hand:${i}`].cards.filter((id) => id != null);
-      if (known.length) {
-        const k = div("c-known");
-        k.append(span("muted", "已知手牌："));
-        for (const id of known) k.append(chip(card(id)));
-        p.append(k);
+      const row = div("c-row");
+      const hand = div("c-backs");
+      const ids = view.zones[`hand:${i}`].cards;
+      for (const id of ids) hand.append(id == null ? back() : miniCard(card(id), "known"));
+      row.append(hand, span("c-count", ids.length ? `${ids.length} 张` : "无手牌"));
+      box.append(row);
+    }
+
+    // special cards
+    const specials = div("c-specials");
+    const spZone = view.zones[v.special_of[i]];
+    if (spZone.owner == null && spZone.cards.length) specials.append(span("c-label", "共用"));
+    for (const id of spZone.cards) {
+      const c = card(id);
+      const s = div(`c-sp ${c.kind}` + (c.used ? " used" : ""));
+      s.textContent = c.kind === "tour" ? "周游列国" : "强买";
+      s.title = c.used ? "已使用（翻面）" : "可以使用";
+      specials.append(s);
+    }
+    box.append(specials);
+
+    // discard pile
+    const zone = v.discard_of[i];
+    const pile = div("c-pile");
+    if (zone in pileShownBy) {
+      pile.append(span("c-label", `与 ${name(pileShownBy[zone])} 共用弃牌区`));
+    } else {
+      pileShownBy[zone] = i;
+      pile.append(span("c-label", view.zones[zone].owner == null ? "共用弃牌区" : "弃牌区"));
+      const cards = div("c-pile-cards");
+      const ids = view.zones[zone].cards;
+      if (!ids.length) cards.append(span("c-empty", "空"));
+      for (const id of ids) {
+        const m = miniCard(card(id));
+        if (v.pending?.cards.includes(id) || v.last_discard?.card === id) m.classList.add("hot");
+        if (ui.mode === "buyback" && prompt?.buyback.includes(id)) {
+          m.classList.add("pick");
+          m.title = "点击回购这张牌";
+          m.onclick = () => ctx.act({ type: "buyback", card: id });
+        } else if (ui.mode === "buy" && prompt?.buy?.cards.includes(id)) {
+          m.classList.add("pick");
+          if (ui.picked.has(id)) m.classList.add("picked");
+          m.title = "点击选择要强买的牌";
+          m.onclick = () => {
+            if (ui.picked.has(id)) ui.picked.delete(id);
+            else if (ui.picked.size < prompt.buy.max) ui.picked.add(id);
+            else ui.picked = new Set([id]);
+            rerender();
+          };
+        }
+        cards.append(m);
       }
+      pile.append(cards);
     }
-    const pile = div("c-discard");
-    const pileZone = v.discard_of[i];
-    if (pileZone in pileShownBy) {
-      pile.append(span("muted", `与 ${name(pileShownBy[pileZone])} 共用弃牌区`));
-      p.append(pile);
-      players.append(p);
-      continue;
-    }
-    pileShownBy[pileZone] = i;
-    const discard = view.zones[pileZone].cards;
-    if (view.zones[pileZone].owner == null) pile.append(span("muted", "共用："));
-    if (!discard.length) pile.append(span("muted", "弃牌区为空"));
-    for (const id of discard) {
-      const c = chip(card(id));
-      if (v.pending?.cards.includes(id)) c.classList.add("hot");
-      if (ui.mode === "buyback" && prompt?.buyback.includes(id)) {
-        c.classList.add("pick");
-        c.onclick = () => ctx.act({ type: "buyback", card: id });
-      } else if (ui.mode === "buy" && prompt?.buy?.cards.includes(id)) {
-        c.classList.add("pick");
-        if (ui.picked.has(id)) c.classList.add("picked");
-        c.onclick = () => {
-          if (ui.picked.has(id)) ui.picked.delete(id);
-          else if (ui.picked.size < prompt.buy.max) ui.picked.add(id);
-          rerender();
-        };
-      }
-      pile.append(c);
-    }
-    p.append(pile);
-    players.append(p);
+    box.append(pile);
+    return box;
   }
-  el.append(players);
+
+  // ---- centre: deck, the card in play, whose turn
+  const centre = div("c-centre");
+  const deck = div("c-deck");
+  const deckCount = view.zones.deck.cards.length;
+  deck.append(deckCount ? back("big") : div("card c-slot"));
+  deck.append(span("c-label", `牌堆 ${deckCount} 张`));
+  centre.append(deck);
+  const focus = div("c-focus");
+  if (v.phase === "bid") {
+    focus.append(span("c-label", "翻开的牌"));
+    const row = div("c-row");
+    for (const id of view.zones.bonus.cards) row.append(bigCard(card(id)));
+    focus.append(row);
+  } else if (v.pending) {
+    focus.append(span("c-label", `${name(v.pending.by)} 刚弃置`));
+    const row = div("c-row");
+    for (const id of v.pending.cards) row.append(bigCard(card(id)));
+    focus.append(row);
+  } else if (v.last_discard && view.cards[v.last_discard.card]
+             && view.zones[v.discard_of[v.last_discard.by]].cards.includes(v.last_discard.card)) {
+    focus.append(span("c-label", `${name(v.last_discard.by)} 最近弃置`));
+    focus.append(bigCard(card(v.last_discard.card)));
+  }
+  centre.append(focus);
+  const turnInfo = span("c-turn", v.phase === "over" ? "游戏结束"
+    : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "");
+  centre.append(turnInfo);
+  felt.append(centre);
+
+  // ---- status line
+  const status = div("status");
+  status.textContent = statusText(ctx, v, prompt, name);
+  felt.append(status);
 
   // ---- my hand and actions
+  const bottom = div("bottom c-mine");
+  bottom.append(mySeatBox);
+  felt.append(bottom);
   if (me != null) {
-    const area = div("c-mine");
+    const hand = div("my-hand c-hand");
     const handIds = view.zones[`hand:${me}`].cards;
-    const drawn = new Set(view.private.drawn ?? []);
-    const hand = div("c-hand");
+    const drawn = new Set(v.turn === me ? view.private.drawn ?? [] : []);
     const selectable = prompt?.type === "draw" ? (id) => drawn.has(id)
       : prompt?.type === "tour" || prompt?.type === "give" ? () => true : null;
-    const cityOrder = Object.values(ctx.room.static.provinces).flat();
     for (const id of sortCards(handIds, card, cityOrder)) {
       const c = bigCard(card(id));
-      if (drawn.has(id) && v.turn === me) c.classList.add("new");
-      if (selectable && selectable(id)) {
-        c.classList.add("pick");
-        if (ui.selected === id) c.classList.add("picked");
-        c.onclick = () => { ui.selected = ui.selected === id ? null : id; rerender(); };
+      c.dataset.id = id;
+      if (drawn.has(id)) c.classList.add("new");
+      if (selectable) {
+        if (selectable(id)) {
+          c.classList.add("clickable");
+          if (ui.selected === id) c.classList.add("selected");
+          c.onclick = () => { ui.selected = ui.selected === id ? null : id; rerender(); };
+        } else c.classList.add("dim");
       }
       hand.append(c);
     }
-    if (!handIds.length) hand.append(span("muted", "没有手牌"));
-    area.append(hand);
+    if (!handIds.length) hand.append(span("c-empty", "没有手牌"));
+    bottom.append(hand);
     const actions = div("c-actions");
-    buildActions(actions, ctx, prompt, rerender);
-    area.append(actions);
-    el.append(area);
+    // hovering a Pattern button lifts the hand cards it would use
+    const highlight = (patternId) => {
+      const ids = patternId ? cardsForPattern(info, patternId, handIds, card) : new Set();
+      for (const c of hand.querySelectorAll(".card")) c.classList.toggle("hl", ids.has(+c.dataset.id));
+    };
+    buildActions(actions, ctx, prompt, rerender, highlight);
+    if (actions.childElementCount) bottom.append(actions);
   }
 
-  if (v.phase === "over") el.append(finalBox(v, name));
+  if (v.phase === "over") felt.append(finalBox(v, name));
 
-  // ---- reference + log
-  const bottom = div("c-bottom");
-  const info = ctx.room.static;
-  bottom.append(patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender));
-  bottom.append(logPanel(view.log, name));
-  el.append(bottom);
+  // ---- reference + log under the table
+  const below = div("c-below");
+  below.append(patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender));
+  below.append(logPanel(view.log, name));
+  el.append(below);
 }
 
 function statusText(ctx, v, prompt, name) {
   if (v.phase === "over") return "游戏结束";
   if (prompt) {
     return {
-      draw: "摸牌阶段：从本回合摸到的三张牌中选一张弃置",
-      main: "出牌阶段：回购 / 出游 / 强买 / 兑现，完成后结束回合",
-      dianpao: `${name(prompt.by)} 弃置的牌可以让你兑现 Pattern（点炮）`,
-      tour: `${name(prompt.by)} 发动周游列国：弃置一张手牌，或交给 TA ${prompt.fine} 元`,
-      bid: "是否当地主？地主获得翻开的牌",
-      give: `回合结束：选一张手牌背面朝上交给 ${name(prompt.to)}`,
+      draw: "摸牌阶段：点选一张本回合摸到的牌（蓝框）弃置",
+      main: "出牌阶段：可以回购、出游、强买、兑现（顺序随意），然后结束回合",
+      dianpao: `${name(prompt.by)} 弃的牌能让你兑现 Pattern（点炮），要兑现吗？`,
+      tour: `${name(prompt.by)} 发动周游列国：点选一张手牌弃置，或交给 TA ${prompt.fine} 元`,
+      bid: "要当地主吗？地主获得中间翻开的牌",
+      give: `回合结束：点选一张手牌，背面朝上交给 ${name(prompt.to)}`,
     }[prompt.type];
   }
-  if (v.phase === "bid") return `等待 ${waiting(ctx, name)} 决定是否当地主…`;
+  const waiting = ctx.room.waiting.map(name).join("、");
+  if (v.phase === "bid") return `等待 ${waiting} 决定是否当地主…`;
   if (v.phase === "give") return `等待 ${name(v.turn)} 交牌…`;
-  if (v.phase === "dianpao") return `等待 ${waiting(ctx, name)} 决定是否兑现…`;
-  if (v.phase === "tour") return `周游列国：等待 ${waiting(ctx, name)}…`;
+  if (v.phase === "dianpao") return `等待 ${waiting} 决定是否点炮兑现…`;
+  if (v.phase === "tour") return `周游列国：等待 ${waiting}…`;
   return `等待 ${name(v.turn)} 行动…`;
 }
 
-function waiting(ctx, name) {
-  return ctx.room.waiting.map(name).join("、");
-}
-
-function buildActions(box, ctx, prompt, rerender) {
+function buildActions(box, ctx, prompt, rerender, highlight) {
   if (!prompt) return;
   const act = ctx.act;
+  const hoverable = (b, pattern) => {
+    b.onmouseenter = () => highlight(pattern);
+    b.onmouseleave = () => highlight(null);
+  };
   if (prompt.type === "draw") {
     box.append(button("弃置所选", () => act({ type: "discard", card: ui.selected }), ui.selected == null));
-    for (const o of prompt.cash)
-      box.append(button(`不弃牌，直接兑现 ${o.name}（+${o.value}）`, () => act({ type: "cash", pattern: o.pattern })));
+    for (const o of prompt.cash) {
+      const b = button(`不弃，直接兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), false, "gold");
+      hoverable(b, o.pattern);
+      box.append(b);
+    }
   } else if (prompt.type === "main") {
-    for (const o of prompt.cash) box.append(button(`兑现 ${o.name}（+${o.value}）`, () => act({ type: "cash", pattern: o.pattern })));
-    if (prompt.buyback.length)
-      box.append(toggle("回购（10 元）", "buyback", rerender, "点击你弃牌区中要收回的牌"));
-    if (prompt.buy)
-      box.append(toggle(`强买（每张 ${prompt.buy.price} 元）`, "buy", rerender,
-        `点击弃牌区中要买的牌（最多 ${prompt.buy.max} 张）`));
+    for (const o of prompt.cash) {
+      const b = button(`兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), false, "gold");
+      hoverable(b, o.pattern);
+      box.append(b);
+    }
+    if (prompt.buyback.length) box.append(modeButton("回购（−10）", "buyback", rerender));
+    if (prompt.buy) box.append(modeButton(`强买（−${prompt.buy.price}/张）`, "buy", rerender));
     if (ui.mode === "buy")
       box.append(button(`确认强买 ${ui.picked.size} 张`, () => act({ type: "buy", cards: [...ui.picked] }), !ui.picked.size));
     if (prompt.tour) box.append(button("出游（周游列国）", () => {
-      if (confirm("发动周游列国？")) act({ type: "tour" });
+      if (confirm("发动周游列国？其他人依次弃一张牌，第一个不弃的人付你 6 元。")) act({ type: "tour" });
     }));
     box.append(button("结束回合", () => act({ type: "end" }), false, "ghost"));
+    if (ui.mode) box.append(span("c-hint", ui.mode === "buy"
+      ? `点击桌上弃牌区里要买的牌（黄色虚线框，最多 ${prompt.buy.max} 张），钱付给弃这张牌的人`
+      : "点击你弃牌区里要收回的牌（黄色虚线框）"));
   } else if (prompt.type === "dianpao") {
-    const list = div("c-options");
     prompt.options.forEach((o, i) => {
-      const label = document.createElement("label");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = ui.dianpao.has(i);
-      cb.onchange = () => { cb.checked ? ui.dianpao.add(i) : ui.dianpao.delete(i); rerender(); };
-      label.append(cb, document.createTextNode(` 兑现 ${o.name}：你 +${o.gain}，弃牌者 -${o.cost}`));
-      list.append(label);
+      const on = ui.dianpao.has(i);
+      const b = button(`${on ? "✓ " : ""}${o.name} +${o.gain}` + (o.cost ? `（弃牌者 −${o.cost}）` : ""), () => {
+        on ? ui.dianpao.delete(i) : ui.dianpao.add(i);
+        rerender();
+      }, false, on ? "gold" : "ghost");
+      hoverable(b, o.pattern);
+      box.append(b);
     });
-    box.append(list);
     box.append(button("兑现所选", () => act({ type: "dianpao", choices: [...ui.dianpao] }), !ui.dianpao.size));
     box.append(button("不兑现", () => act({ type: "dianpao", choices: [] }), false, "ghost"));
+  } else if (prompt.type === "tour") {
+    box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
+    box.append(button(`不弃，付 ${prompt.fine} 元`, () => act({ type: "tour", card: null }), false, "ghost"));
   } else if (prompt.type === "bid") {
     box.append(button("当地主", () => act({ type: "bid", take: true })));
     box.append(button("不当", () => act({ type: "bid", take: false }), false, "ghost"));
   } else if (prompt.type === "give") {
     box.append(button(`交给 ${ctx.seatName(prompt.to)}`, () => act({ type: "give", card: ui.selected }), ui.selected == null));
-  } else if (prompt.type === "tour") {
-    box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
-    box.append(button(`不弃，付 ${prompt.fine} 元`, () => act({ type: "tour", card: null }), false, "ghost"));
   }
 }
 
-function toggle(text, mode, rerender, hint) {
-  const b = button(ui.mode === mode ? `取消${text.replace(/（.*/, "")}` : text, () => {
-    ui.mode = ui.mode === mode ? null : mode;
+function modeButton(text, mode, rerender) {
+  const on = ui.mode === mode;
+  return button(on ? "取消" + text.replace(/（.*/, "") : text, () => {
+    ui.mode = on ? null : mode;
     ui.picked = new Set();
     rerender();
-  }, false, ui.mode === mode ? "ghost" : "");
-  if (ui.mode === mode) b.title = hint;
-  const wrap = document.createElement("span");
-  wrap.className = "row";
-  wrap.append(b);
-  if (ui.mode === mode) wrap.append(span("muted", hint));
-  return wrap;
+  }, false, on ? "ghost" : "");
+}
+
+// hand cards that cashing ``patternId`` would use
+function cardsForPattern(info, patternId, handIds, card) {
+  const p = info.patterns.find((x) => x.id === patternId);
+  const out = new Set();
+  if (!p) return out;
+  const left = { ...p.need };
+  for (const id of handIds) {
+    const c = card(id).city;
+    if (left[c] > 0) { left[c]--; out.add(id); }
+  }
+  return out;
 }
 
 function finalBox(v, name) {
-  const box = div("c-final panel");
-  const ranking = [...v.money.keys()].sort((a, b) => v.money[b] - v.money[a]);
+  const box = div("score-sheet");
   const h = document.createElement("h3");
   h.textContent = `游戏结束，获胜：${v.winners.map(name).join("、")}`;
   box.append(h);
-  if (v.teams) box.append(span("c-rank", `地主 ${v.teams.landlord} 元 vs 农民合计 ${v.teams.farmers} 元`));
-  ranking.forEach((i, k) => box.append(span("c-rank", `${k + 1}. ${name(i)}：${v.money[i]} 元`)));
+  if (v.teams) box.append(span("", `地主 ${v.teams.landlord} 元 vs 农民合计 ${v.teams.farmers} 元`));
+  const t = document.createElement("table");
+  [...v.money.keys()].sort((a, b) => v.money[b] - v.money[a]).forEach((i, k) => {
+    const r = t.insertRow();
+    r.insertCell().textContent = `${k + 1}`;
+    r.insertCell().textContent = name(i);
+    const c = r.insertCell();
+    c.textContent = `${v.money[i]} 元`;
+    if (v.winners.includes(i)) c.className = "winner";
+  });
+  box.append(t);
   return box;
 }
 
@@ -241,7 +307,7 @@ function patternPanel(info, myCities, rerender) {
   det.className = "panel c-patterns";
   det.open = patternUi.open;
   det.ontoggle = () => { patternUi.open = det.open; };
-  det.innerHTML = "<summary>Pattern 速查（按差几张排序）</summary>";
+  det.innerHTML = "<summary>Pattern 速查（按还差几张排序）</summary>";
   const rows = info.patterns.map((p) => {
     let missing = 0;
     for (const [c, k] of Object.entries(p.need)) missing += Math.max(0, k - (have[c] ?? 0));
@@ -256,49 +322,53 @@ function patternPanel(info, myCities, rerender) {
     tr.insertCell().textContent = p.value;
     const cities = tr.insertCell();
     for (const [c, k] of Object.entries(p.need)) {
-      const s = span("pc " + PROVINCE_CLASS[provinceOf[c]] + ((have[c] ?? 0) >= k ? " ok" : ""), k > 1 ? `${c}×${k}` : c);
-      cities.append(s);
+      cities.append(span("pc " + PROVINCE_CLASS[provinceOf[c]] + ((have[c] ?? 0) >= k ? " ok" : ""), k > 1 ? `${c}×${k}` : c));
     }
     tr.insertCell().textContent = missing ? `差 ${missing}` : "可兑现";
   }
   det.append(table);
-  const more = button(patternUi.all ? "只显示差 2 张以内的" : `显示全部 ${rows.length} 个 Pattern`, () => {
+  det.append(button(patternUi.all ? "只显示差 2 张以内的" : `显示全部 ${rows.length} 个 Pattern`, () => {
     patternUi.all = !patternUi.all;
     rerender();
-  }, false, "ghost small");
-  det.append(more);
+  }, false, "ghost small"));
   return det;
 }
 
 function logPanel(log, name) {
-  const box = div("panel c-log");
-  box.innerHTML = "<h3>记录</h3>";
+  const det = document.createElement("details");
+  det.className = "panel c-log";
+  det.open = true;
+  det.innerHTML = "<summary>记录</summary>";
   const list = div("c-log-list");
-  for (const e of [...log].reverse().slice(0, 60)) {
-    const d = div("");
-    d.textContent = e.msg.replace(/\{P(\d+)\}/g, (_, i) => name(+i));
-    list.append(d);
-  }
-  box.append(list);
-  return box;
+  for (const e of [...log].reverse().slice(0, 80)) list.append(span("", e.msg.replace(/\{P(\d+)\}/g, (_, i) => name(+i))));
+  det.append(list);
+  return det;
 }
 
 function sortCards(ids, card, cityOrder) {
   return [...ids].sort((a, b) => cityOrder.indexOf(card(a).city) - cityOrder.indexOf(card(b).city) || a - b);
 }
 
-function chip(c) {
-  const s = span("pc " + PROVINCE_CLASS[c.province], c.city + (CAPITALS.has(c.city) ? "★" : ""));
-  s.title = `${c.city}（${c.province}${CAPITALS.has(c.city) ? "省会" : ""}）`;
-  return s;
+// a playing-card sized city card
+function bigCard(c) {
+  const d = div("card ccard " + PROVINCE_CLASS[c.province]);
+  d.innerHTML = `<span class="cc-band"></span><span class="cc-name"></span><span class="cc-prov"></span>`;
+  d.children[1].textContent = c.city;
+  d.children[2].textContent = c.province + (CAPITALS.has(c.city) ? " ★" : "");
+  d.title = `${c.city}（${c.province}${CAPITALS.has(c.city) ? "，省会" : ""}）`;
+  return d;
 }
 
-function bigCard(c) {
-  const d = div("ccard " + PROVINCE_CLASS[c.province]);
-  d.innerHTML = `<span class="cc-name"></span><span class="cc-prov"></span>`;
-  d.children[0].textContent = c.city + (CAPITALS.has(c.city) ? "★" : "");
-  d.children[1].textContent = c.province;
+// small card for piles and known cards
+function miniCard(c, extra = "") {
+  const d = div(`mcard ${PROVINCE_CLASS[c.province]} ${extra}`);
+  d.textContent = c.city;
+  d.title = `${c.city}（${c.province}${CAPITALS.has(c.city) ? "，省会" : ""}）`;
   return d;
+}
+
+function back(size = "") {
+  return div(size === "big" ? "card back" : "card back mini-back");
 }
 
 function button(text, onclick, disabled = false, cls = "") {

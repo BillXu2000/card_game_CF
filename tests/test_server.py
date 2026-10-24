@@ -171,3 +171,14 @@ async def test_import_rejects_broken_game_data(tmp_path):
         await amy.expect("room", pred=lambda m: m["room"]["history_len"] == 1)
     finally:
         await client.close()
+
+
+async def test_static_files_are_revalidated(tmp_path):
+    server, client = await make_client(tmp_path)
+    try:
+        for path in ("/", "/static/css/style.css", "/static/js/main.js"):
+            resp = await client.get(path)
+            assert resp.status == 200
+            assert resp.headers["Cache-Control"] == "no-cache"
+    finally:
+        await client.close()

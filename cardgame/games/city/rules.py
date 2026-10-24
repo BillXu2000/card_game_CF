@@ -116,6 +116,7 @@ class CityExchange(Game):
             cash_count=[0] * n,
             dianpao_count=[0] * n,
             winners=None,
+            last_discard=None,
             landlord=None,
             discard_of=[f"discard:{i}" for i in range(n)],
             special_of=[f"special:{i}" for i in range(n)],
@@ -461,6 +462,7 @@ class CityExchange(Game):
 
     def _discard(self, st: GameState, seat: int, card: int, resume: str) -> None:
         self._put_discard(st, seat, card)
+        st.vars["last_discard"] = {"card": card, "by": seat}
         st.log(f"{P(seat)} 弃置 {self.card_name(st, card)}")
         self._open_window(st, seat, [card], resume)
 
