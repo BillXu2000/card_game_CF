@@ -6,6 +6,8 @@
 // Geometry comes from static/data/china_map.json (tools/build_china_map.py).
 
 const SVGNS = "http://www.w3.org/2000/svg";
+// 长江三角洲 / 珠江三角洲 close-ups (disabled for now)
+const SHOW_INSETS = false;
 const GAME_COLOR = { "直辖市": "#c0392b", "江苏": "#2471a3", "湖北": "#1e8449", "四川": "#b9770e", "广东": "#7d3c98" };
 const CAPITAL = "北京";
 const CAPITALS = ["南京", "武汉", "成都", "广州"];
@@ -90,10 +92,12 @@ function build() {
   body.innerHTML = "";
   const main = view("main");
   body.append(main);
-  const row = document.createElement("div");
-  row.className = "cm-insets";
-  row.append(view("yrd"), view("prd"));
-  body.append(row);
+  if (SHOW_INSETS) {
+    const row = document.createElement("div");
+    row.className = "cm-insets";
+    row.append(view("yrd"), view("prd"));
+    body.append(row);
+  }
   const foot = document.createElement("div");
   foot.className = "cm-foot";
   foot.append(featureList(), legend(), view("locator"));
@@ -121,7 +125,7 @@ function view(name) {
   svg.dataset.k = k;
   el("rect", { x: x - 1000, y: y - 1000, width: w + 2000, height: h + 2000, class: "cm-sea" }, svg);
   base(svg, name);
-  if (name === "main") {
+  if (name === "main" && SHOW_INSETS) {
     for (const inset of ["yrd", "prd"]) {
       const [ix, iy, iw, ih] = data.views[inset];
       el("rect", { x: ix, y: iy, width: iw, height: ih, class: "cm-inset-box" }, svg);
