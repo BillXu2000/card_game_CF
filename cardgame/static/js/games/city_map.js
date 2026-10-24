@@ -14,6 +14,9 @@ const CAPITALS = ["南京", "武汉", "成都", "广州"];
 const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口】
 const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
 const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
+const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
+// icon offsets (px) where the default spot would overlap a neighbour
+const HAMMER_AT = { 中山: [-11, 11] };
 
 // Patterns that correspond to something drawn on the map
 const FEATURES = {
@@ -24,6 +27,7 @@ const FEATURES = {
   "special:沿海港口": { kind: "ports", label: "港口" },
   "special:四大火炉": { kind: "fire", label: "火炉" },
   "special:泉岭大球": { kind: "hammer", label: "榔头" },
+  "special:古来要塞": { kind: "fort", label: "要塞" },
   "municipal": { kind: "province", id: "直辖市", label: "直辖市" },
   "province:江苏": { kind: "province", id: "江苏", label: "江苏省" },
   "province:湖北": { kind: "province", id: "湖北", label: "湖北省" },
@@ -231,7 +235,8 @@ function drawCities(svg) {
     }
     if (PORTS.includes(city)) el("text", { x: -12, y: 12, class: "sym-port" }, node).textContent = "⚓";
     if (FURNACES.includes(city)) fire(node, 9, -10);
-    if (HAMMERS.includes(city)) hammer(node, 10, -11);
+    if (HAMMERS.includes(city)) hammer(node, ...(HAMMER_AT[city] ?? [10, -11]));
+    if (FORTS.includes(city)) fort(node, -10, -10);
     const [dx, dy, anchor] = LABELS[name][city] ?? [7, 4, "start"];
     const t = el("text", { x: dx, y: dy, "text-anchor": anchor, class: "cm-label" }, node);
     t.textContent = city + (count ? ` ×${count}` : "");
@@ -260,6 +265,16 @@ function hammer(parent, x, y, size = 1.6) {
   const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(-40)` }, parent);
   el("rect", { x: -1.1, y: -2.6, width: 2.2, height: 9.5, rx: 0.6, class: "handle" }, g);
   el("rect", { x: -5, y: -5.8, width: 10, height: 4, rx: 0.8, class: "head" }, g);
+  return g;
+}
+
+// 【古来要塞】 city wall with crenellations and a gate
+function fort(parent, x, y, size = 1.25) {
+  const g = el("g", { class: "sym-fort", transform: `translate(${x},${y}) scale(${size})` }, parent);
+  el("path", {
+    d: "M-5,4V-2H-5V-4H-3.4V-2.6H-1.8V-4H-0.2V-2.6H1.4V-4H3V-2.6H5V-4V4H1.6V1.2A1.6,1.6 0 0 0 -1.6,1.2V4Z",
+    class: "wall",
+  }, g);
   return g;
 }
 
@@ -300,7 +315,7 @@ function refreshHighlight() {
     for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", has("river"));
     for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", has("lake", l.dataset.lake));
     for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", has("province", pr.dataset.game));
-    for (const kind of ["ports", "fire", "hammer", "capitals"]) svg.classList.toggle(`${kind}-on`, has(kind));
+    for (const kind of ["ports", "fire", "hammer", "fort", "capitals"]) svg.classList.toggle(`${kind}-on`, has(kind));
   }
   for (const b of panel.querySelectorAll(".cm-feature")) b.classList.toggle("on", pids.includes(b.dataset.pattern));
   const cap = panel.querySelector(".cm-caption");
@@ -345,6 +360,7 @@ function legend() {
     ["港口", (s) => { const t = el("text", { x: 6, y: 13, class: "sym-port" }, s); t.textContent = "⚓"; }],
     ["火炉（四大火炉）", (s) => fire(s, 12, 8.5, 1.2)],
     ["榔头（泉岭大球）", (s) => hammer(s, 12, 9, 1.15)],
+    ["要塞（古来要塞）", (s) => fort(s, 12, 8, 1.3)],
     ["手里有的城市", (s) => {
       const g = el("g", { class: "cm-city held", transform: "translate(12,8)" }, s);
       g.style.setProperty("--pv", GAME_COLOR["江苏"]);

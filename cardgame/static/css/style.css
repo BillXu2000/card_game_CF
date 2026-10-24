@@ -355,7 +355,8 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .sym-fire .outer { fill: #e8590c; stroke: #fff; stroke-width: .8; paint-order: stroke; } .sym-fire .inner { fill: #ffd43b; }
 .sym-hammer rect { stroke: #fff; stroke-width: .9; paint-order: stroke; }
 .sym-hammer .handle { fill: #a0632b; } .sym-hammer .head { fill: #2f3a44; }
-.cm-svg.fire-on .sym-fire, .cm-svg.hammer-on .sym-hammer { transform-box: fill-box; transform-origin: center; scale: 1.6; }
+.sym-fort .wall { fill: #8b3a1a; stroke: #fff; stroke-width: .7; paint-order: stroke; stroke-linejoin: round; }
+.cm-svg.fire-on .sym-fire, .cm-svg.hammer-on .sym-hammer, .cm-svg.fort-on .sym-fort { transform-box: fill-box; transform-origin: center; scale: 1.6; }
 
 .cm-features { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 /* fixed height: a caption that grows would move the buttons under the mouse */
