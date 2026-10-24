@@ -17,6 +17,8 @@ const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球�
 const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
 // icon offsets (px) where the default spot would overlap a neighbour
 const HAMMER_AT = { 中山: [-11, 11] };
+// anchors sit on the sea next to each port, in the direction of the open water
+const PORT_AT = { 上海: [9, 9], 天津: [17, 3], 深圳: [1, 11], 汕头: [8, 8] };
 
 // Patterns that correspond to something drawn on the map
 const FEATURES = {
@@ -289,12 +291,12 @@ function drawCities(svg, k) {
       el("circle", { r: 3.2, class: "sym-pref" }, node);
       el("circle", { r: 0.9, class: "sym-pref-dot" }, node);
     }
-    if (PORTS.includes(city)) el("text", { x: -12, y: 12, class: "sym-port" }, node).textContent = "⚓";
+    if (PORTS.includes(city)) anchor(node, ...PORT_AT[city]);
     if (FURNACES.includes(city)) fire(node, 9, -10);
     if (HAMMERS.includes(city)) hammer(node, ...(HAMMER_AT[city] ?? [10, -11]));
     if (FORTS.includes(city)) fort(node, -10, -10);
-    const [dx, dy, anchor] = LABELS[name][city] ?? [7, 4, "start"];
-    const t = el("text", { x: dx, y: dy, "text-anchor": anchor, class: "cm-label" }, node);
+    const [dx, dy, align] = LABELS[name][city] ?? [7, 4, "start"];
+    const t = el("text", { x: dx, y: dy, "text-anchor": align, class: "cm-label" }, node);
     t.textContent = city + (count ? ` ×${count}` : "");
     // bring the hovered city to the front so its name is not hidden by neighbours
     node.addEventListener("mouseenter", () => {
@@ -306,6 +308,19 @@ function drawCities(svg, k) {
 }
 
 // ------------------------------------------------------------------- icons
+// 【沿海港口】 black anchor with a white outline
+function anchor(parent, x, y, size = 0.9) {
+  const g = el("g", { class: "sym-port", transform: `translate(${x},${y}) scale(${size})` }, parent);
+  const d = "M0,-3.4V4.6M-2.6,-2.3H2.6M-4.2,1.2A4.4,4.4 0 0 0 4.2,1.2"
+    + "M-4.2,1.2l-1.2,0.9M-4.2,1.2l0.3,1.4M4.2,1.2l1.2,0.9M4.2,1.2l-0.3,1.4";
+  for (const cls of ["halo-line", "ink"]) {
+    const part = el("g", { class: cls }, g);
+    el("circle", { cy: -4.6, r: 1.2 }, part);
+    el("path", { d }, part);
+  }
+  return g;
+}
+
 // 【四大火炉】 flame
 function fire(parent, x, y, size = 1.25) {
   const g = el("g", { class: "sym-fire", transform: `translate(${x},${y}) scale(${size})` }, parent);
@@ -360,21 +375,25 @@ function refreshHighlight() {
     const p = ps[0];
     text = `${p.name}：${Object.keys(p.need).join("、")}（${p.value} 元）`;
   }
-  const cities = new Set(ps.flatMap((p) => Object.keys(p.need)));
+  // hovering a city: only that city and the lines/areas of its Patterns stand out,
+  // every other city fades; hovering a Pattern: all its cities stand out
+  const cityMode = !!current.city && !current.hover;
+  const cities = cityMode ? new Set() : new Set(ps.flatMap((p) => Object.keys(p.need)));
   const fs = pids.map((id) => FEATURES[id]).filter(Boolean);
   const has = (kind, id) => fs.some((f) => f.kind === kind && (id === undefined || f.id === id));
+  const ICONS = ["ports", "fire", "hammer", "fort", "capitals"];
   const svgs = [bg?.querySelector("svg"), ...(legendBox?.querySelectorAll(".cm-svg") ?? [])].filter(Boolean);
   for (const svg of svgs) {
     svg.classList.toggle("focus", ps.length > 0);
     for (const node of svg.querySelectorAll(".cm-city")) {
       node.classList.toggle("on", cities.has(node.dataset.city));
-      node.classList.toggle("this", node.dataset.city === current.city && !current.hover);
+      node.classList.toggle("this", cityMode && node.dataset.city === current.city);
     }
     for (const r of svg.querySelectorAll(".cm-rail")) r.classList.toggle("on", has("rail", r.dataset.rail));
     for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", has("river"));
     for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", has("lake", l.dataset.lake));
     for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", has("province", pr.dataset.game));
-    for (const kind of ["ports", "fire", "hammer", "fort", "capitals"]) svg.classList.toggle(`${kind}-on`, has(kind));
+    for (const kind of ICONS) svg.classList.toggle(`${kind}-on`, !cityMode && has(kind));
   }
   for (const b of legendBox?.querySelectorAll(".cm-feature") ?? []) b.classList.toggle("on", pids.includes(b.dataset.pattern));
   if (caption) {
@@ -429,7 +448,7 @@ function legend() {
     ["湖泊", (s) => el("ellipse", { cx: 12, cy: 8, rx: 9, ry: 5, class: "cm-lake" }, s)],
     ["高速铁路", rail("hsr")],
     ["铁路", rail("rail")],
-    ["港口", (s) => { el("text", { x: 6, y: 13, class: "sym-port" }, s).textContent = "⚓"; }],
+    ["港口", (s) => anchor(s, 12, 8.5, 1.15)],
     ["火炉（四大火炉）", (s) => fire(s, 12, 8.5, 1.3)],
     ["榔头（泉岭大球）", (s) => hammer(s, 12, 9, 1.15)],
     ["城堡（古来要塞）", (s) => fort(s, 12, 8.3, 1.15)],
