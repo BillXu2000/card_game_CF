@@ -25,7 +25,7 @@ import logging
 import weakref
 from pathlib import Path
 
-from aiohttp import WSMsgType, web
+from aiohttp import WSCloseCode, WSMsgType, web
 
 from ..games import GAMES
 from .auth import AuthError, Users
@@ -241,5 +241,12 @@ class Server:
         async def on_startup(_app):
             self.rooms.resume_ai()
 
+        async def on_shutdown(_app):
+            # open sockets would hold the shutdown for a minute; browsers
+            # reconnect on their own once the server is back
+            for c in list(self.clients):
+                await c.ws.close(code=WSCloseCode.GOING_AWAY, message=b"server restart")
+
         app.on_startup.append(on_startup)
+        app.on_shutdown.append(on_shutdown)
         return app
