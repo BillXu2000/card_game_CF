@@ -140,6 +140,10 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .mini { background: #fff; color: #111; border-radius: 3px; font-size: 11px; padding: 0 3px; font-weight: 700; }
 .mini.red { color: #d01818; }
 
+.hp-pile { grid-area: tr; justify-self: end; align-self: start; }
+.hp-pile .pile-pop { right: 0; top: calc(100% + 4px); }
+.hp-pile .mini { min-width: 22px; text-align: center; }
+
 .trick { grid-area: trick; position: relative; min-height: 260px; }
 .trick .card { position: absolute; left: 50%; top: 50%; }
 .trick .t-bottom { transform: translate(-50%, -10%); }
@@ -160,6 +164,25 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .my-hand .card.selected { transform: translateY(-18px); }
 .my-hand .card.received { box-shadow: 0 0 0 3px #7fd3ff; }
 .my-hand .card.dim { filter: brightness(.7); }
+
+/* discard pile count; hovering it shows every kind of card */
+.pile-stat {
+  position: relative; font-size: 13px; padding: 3px 10px; border-radius: 12px; white-space: nowrap;
+  background: rgba(0, 0, 0, .35); color: #fff; cursor: default; outline: none;
+}
+.pile-stat:hover, .pile-stat:focus { background: rgba(0, 0, 0, .55); }
+.pile-pop {
+  display: none; position: absolute; z-index: 20; flex-direction: column; gap: 4px; padding: 8px;
+  border-radius: 8px; background: rgba(16, 38, 28, .96); box-shadow: 0 4px 16px rgba(0, 0, 0, .5);
+}
+.pile-stat:hover .pile-pop, .pile-stat:focus .pile-pop { display: flex; }
+.pile-row { display: flex; gap: 3px; }
+.pile-pop .absent { opacity: .25; }
+.c-pile-stat .pile-pop { right: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+@media (max-width: 600px) {
+  /* too wide to hang off the badge: centre it on the screen */
+  .hp-pile .pile-pop, .c-pile-stat .pile-pop { position: fixed; left: 50%; right: auto; top: 50%; transform: translate(-50%, -50%); }
+}
 
 .score-sheet {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
@@ -197,6 +220,7 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-bg { position: absolute; inset: 0; z-index: 0; }
 .cm-bg > svg { width: 100%; height: 100%; display: block; }
 .city-table > :not(.cm-bg) { position: relative; z-index: 1; }
+.city-table > .c-mid { z-index: 2; }  /* the discard pile popup goes over the status line */
 .c-top, .c-mid, .c-area { pointer-events: none; }
 .c-top > *, .c-mid > :not(.c-area) { pointer-events: auto; }
 

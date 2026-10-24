@@ -83,6 +83,7 @@ export function render(el, ctx) {
     centre.append(n);
   }
   table.append(centre);
+  table.append(discardPile(view, cardOf));
 
   // ---- status line
   const status = div("status");
@@ -195,6 +196,33 @@ function scoreSheet(ctx, v, prompt) {
     n.textContent = "等待其他玩家…";
     box.append(n);
   }
+  return box;
+}
+
+// the finished tricks of this hand; hovering lists all 52 cards with the
+// ones not played yet faded
+function discardPile(view, cardOf) {
+  const played = new Set();
+  for (let i = 0; i < 4; i++) {
+    for (const id of view.zones[`won:${i}`].cards) {
+      const c = cardOf(id);
+      if (c) played.add(c.suit + c.rank);
+    }
+  }
+  const box = div("pile-stat hp-pile");
+  box.tabIndex = 0;
+  box.textContent = `弃牌堆 ${played.size} 张`;
+  const pop = div("pile-pop");
+  for (const suit of Object.keys(SUIT_ORDER)) {
+    const row = div("pile-row");
+    for (let rank = 2; rank <= 14; rank++) {
+      const c = div("mini" + (suit === "H" || suit === "D" ? " red" : "") + (played.has(suit + rank) ? "" : " absent"));
+      c.textContent = cardLabel({ suit, rank });
+      row.append(c);
+    }
+    pop.append(row);
+  }
+  box.append(pop);
   return box;
 }
 

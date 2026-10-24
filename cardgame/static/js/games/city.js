@@ -137,6 +137,7 @@ export function render(el, ctx) {
   const deckCount = view.zones.deck.cards.length;
   deck.append(deckCount ? back("big") : div("card c-slot"));
   deck.append(span("c-label", `牌堆 ${deckCount} 张`));
+  deck.append(discardPile(info, view, v, card));
   centre.append(deck);
   const focus = div("c-focus");
   if (v.phase === "bid") {
@@ -322,6 +323,36 @@ function cardsForPattern(info, patternId, handIds, card) {
     if (left[c] > 0) { left[c]--; out.add(id); }
   }
   return out;
+}
+
+// all discard areas together; hovering lists every city with how many of it
+// were discarded, the ones never discarded faded
+function discardPile(info, view, v, card) {
+  const seen = {};
+  let total = 0;
+  for (const zone of new Set(v.discard_of)) {
+    for (const id of view.zones[zone].cards) {
+      const c = card(id).city;
+      seen[c] = (seen[c] ?? 0) + 1;
+      total++;
+    }
+  }
+  const box = div("pile-stat c-pile-stat");
+  box.tabIndex = 0;
+  box.textContent = `弃牌堆 ${total} 张`;
+  const pop = div("pile-pop");
+  for (const [province, cities] of Object.entries(info.provinces)) {
+    const row = div("pile-row");
+    for (const city of cities) {
+      const k = seen[city] ?? 0;
+      const m = div(`mcard ${PROVINCE_CLASS[province]}` + (k ? "" : " absent"));
+      m.textContent = k ? `${city}×${k}` : city;
+      row.append(m);
+    }
+    pop.append(row);
+  }
+  box.append(pop);
+  return box;
 }
 
 function finalBox(v, name) {
