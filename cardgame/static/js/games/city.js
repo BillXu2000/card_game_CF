@@ -2,6 +2,8 @@
 // with your hand; the other players sit around the felt with their money,
 // card backs, special cards and discard piles; the deck and the card just
 // discarded are in the middle.
+import { hoverPattern, mapPanel } from "./city_map.js";
+
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
 const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
@@ -176,6 +178,11 @@ export function render(el, ctx) {
 
   if (v.phase === "over") felt.append(finalBox(v, name));
 
+  // ---- map of China next to the table
+  const held = {};
+  if (me != null) for (const id of view.zones[`hand:${me}`].cards) held[card(id).city] = (held[card(id).city] ?? 0) + 1;
+  el.append(mapPanel(info, held));
+
   // ---- reference + log under the table
   const below = div("c-below");
   below.append(patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender));
@@ -207,8 +214,8 @@ function buildActions(box, ctx, prompt, rerender, highlight) {
   if (!prompt) return;
   const act = ctx.act;
   const hoverable = (b, pattern) => {
-    b.onmouseenter = () => highlight(pattern);
-    b.onmouseleave = () => highlight(null);
+    b.onmouseenter = () => { highlight(pattern); hoverPattern(pattern); };
+    b.onmouseleave = () => { highlight(null); hoverPattern(null); };
   };
   if (prompt.type === "draw") {
     box.append(button("弃置所选", () => act({ type: "discard", card: ui.selected }), ui.selected == null));
@@ -318,6 +325,8 @@ function patternPanel(info, myCities, rerender) {
   for (const { p, missing } of shown) {
     const tr = table.insertRow();
     tr.className = missing === 0 ? "ready" : missing === 1 ? "near" : "";
+    tr.onmouseenter = () => hoverPattern(p.id);
+    tr.onmouseleave = () => hoverPattern(null);
     tr.insertCell().textContent = p.name;
     tr.insertCell().textContent = p.value;
     const cities = tr.insertCell();
