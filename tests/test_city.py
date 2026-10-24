@@ -334,3 +334,20 @@ def test_landlord_ai_games():
         st = play_ai(G.new_state(3, {"mode": "landlord"}, seed=seed))
         assert st.vars["landlord"] is not None and st.vars["winners"]
         assert sum(len(z.cards) for z in st.zones.values()) == 108
+
+
+def test_china_map_matches_game_data():
+    from pathlib import Path
+
+    from cardgame.games.city.data import CITIES
+
+    path = Path(__file__).resolve().parent.parent / "cardgame" / "static" / "data" / "china_map.json"
+    m = json.loads(path.read_text(encoding="utf-8"))
+    assert set(m["cities"]) == set(CITIES)
+    assert {"main", "yrd", "prd", "locator"} <= set(m["views"])
+    games = {p["game"] for p in m["provinces"] if p["game"]}
+    assert games == {"直辖市", "江苏", "湖北", "四川", "广东"}
+    assert m["yangtze"] and m["dashes"] and set(m["railways"]) == {"jinghu", "chengxiang"}
+    # every city lies inside the main view
+    x, y, w, h = m["views"]["main"]
+    assert all(x < cx < x + w and y < cy < y + h for cx, cy in m["cities"].values())
