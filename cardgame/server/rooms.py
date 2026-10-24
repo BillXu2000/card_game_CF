@@ -77,6 +77,7 @@ class Room:
             "host": self.host,
             "status": self.status,
             "seats": [s.name for s in self.seats],
+            "options": self.options,
         }
 
     def meta(self) -> dict:
@@ -179,7 +180,7 @@ class RoomManager:
         n = num_players if isinstance(num_players, int) else game.min_players
         if not game.min_players <= n <= game.max_players:
             raise RoomError(f"{game.name} 需要 {game.min_players}-{game.max_players} 人")
-        room = Room(self._new_code(), game_id, user, n, options if isinstance(options, dict) else {})
+        room = Room(self._new_code(), game_id, user, n, game.clean_options(options if isinstance(options, dict) else {}))
         room.seats[0].user = user
         self.rooms[room.code] = room
         self._changed(room)
@@ -276,6 +277,15 @@ class RoomManager:
         if any(not s.empty for s in room.seats[n:]):
             raise RoomError("请先清空多余的座位")
         room.seats = (room.seats + [Seat() for _ in range(n)])[:n]
+        self._changed(room)
+        return room
+
+    def set_options(self, user: str, code: object, options: object) -> Room:
+        room = self.get(code)
+        self._require_host(room, user)
+        if room.status == "playing":
+            raise RoomError("游戏进行中不能修改选项")
+        room.options = room.game.clean_options({**room.options, **(options if isinstance(options, dict) else {})})
         self._changed(room)
         return room
 

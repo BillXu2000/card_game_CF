@@ -6,7 +6,8 @@ client → server
     login {username, password}      resume {token}      logout
     lobby                           create {game, players?, options?}
     join {code}                     leave {code}        sit {code, seat}
-    seat {code, seat, mode}         players {code, n}   start {code}
+    seat {code, seat, mode}         players {code, n}   options {code, options}
+    start {code}
     action {code, action}           history {code}      rollback {code, index}
     export {code}                   import {code, state}
     close {code}
@@ -73,6 +74,8 @@ class Server:
             "room": {
                 **room.summary(),
                 "is_host": room.host == user,
+                "option_specs": game.option_specs(),
+                "static": game.static_info(),
                 "min_players": game.min_players,
                 "max_players": game.max_players,
                 "seats": [
@@ -117,8 +120,8 @@ class Server:
         return {
             "op": "lobby",
             "rooms": self.rooms.list_rooms(),
-            "games": [{"id": g.id, "name": g.name, "min_players": g.min_players, "max_players": g.max_players}
-                      for g in GAMES.values()],
+            "games": [{"id": g.id, "name": g.name, "min_players": g.min_players, "max_players": g.max_players,
+                       "options": g.option_specs()} for g in GAMES.values()],
         }
 
     # -------------------------------------------------------------- dispatch
@@ -163,6 +166,8 @@ class Server:
             R.set_seat(user, code, msg.get("seat"), msg.get("mode"))
         elif op == "players":
             R.set_players(user, code, msg.get("n"))
+        elif op == "options":
+            R.set_options(user, code, msg.get("options"))
         elif op == "start":
             R.start(user, code)
         elif op == "action":

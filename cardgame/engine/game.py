@@ -32,15 +32,31 @@ class Game:
     max_players: int = 2
     ai_names: tuple[str, ...] = ()
 
+    def option_specs(self) -> list[dict]:
+        """Options shown when creating a room:
+        ``{"key", "label", "type": "bool"|"int"|"choice", "default", "choices"?: [[value, label], ...]}``"""
+        return []
+
     def default_options(self) -> dict:
-        return {}
+        return {o["key"]: o["default"] for o in self.option_specs()}
+
+    def clean_options(self, options: dict | None) -> dict:
+        """Defaults overridden by valid values from ``options``; unknown keys dropped."""
+        out = self.default_options()
+        for spec in self.option_specs():
+            v = (options or {}).get(spec["key"])
+            if spec["type"] == "bool" and isinstance(v, bool):
+                out[spec["key"]] = v
+            elif spec["type"] == "int" and isinstance(v, int) and not isinstance(v, bool):
+                out[spec["key"]] = max(spec.get("min", v), min(spec.get("max", v), v))
+            elif spec["type"] == "choice" and v in [c[0] for c in spec["choices"]]:
+                out[spec["key"]] = v
+        return out
 
     def new_state(self, num_players: int, options: dict | None = None, seed: int | None = None) -> GameState:
         if not self.min_players <= num_players <= self.max_players:
             raise ValueError(f"{self.name} needs {self.min_players}-{self.max_players} players")
-        opts = self.default_options()
-        opts.update(options or {})
-        st = GameState(self.id, num_players, opts, seed)
+        st = GameState(self.id, num_players, self.clean_options(options), seed)
         self.setup(st)
         return st
 
@@ -63,6 +79,10 @@ class Game:
     # ---- optional hooks -------------------------------------------------
     def view(self, st: GameState, seat: int | None) -> dict:
         return st.view(seat)
+
+    def static_info(self) -> dict:
+        """Constant game data the client needs (e.g. reference tables)."""
+        return {}
 
     def ai_delay(self, st: GameState, prompt: dict) -> float:
         """Seconds an AI waits before answering ``prompt`` (pacing for humans)."""
