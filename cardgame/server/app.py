@@ -20,6 +20,7 @@ server → client
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import weakref
@@ -34,6 +35,17 @@ from .storage import Storage
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).resolve().parent.parent / "static"
+
+
+def static_version() -> str:
+    """Hash of every static file; it goes into the URLs so that no cache
+    (browser or a CDN in front of us) can serve stale JS/CSS after an update."""
+    h = hashlib.sha256()
+    for f in sorted(STATIC.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(STATIC)).encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
 
 
 class Client:
@@ -221,21 +233,37 @@ class Server:
                 self._presence_changed(c.user)
         return ws
 
-    async def index(self, request: web.Request) -> web.FileResponse:
-        return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+    async def index(self, request: web.Request) -> web.Response:
+        # /static/... -> /static/v/<version>/...; the modules import each other
+        # by relative paths, so they all load from the versioned URL
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        html = html.replace('"/static/', f'"/static/v/{self.static_version}/')
+        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
 
     def make_app(self) -> web.Application:
+        self.static_version = static_version()
+        versioned = f"/static/v/{self.static_version}/"
+
         @web.middleware
-        async def revalidate_static(request: web.Request, handler):
-            # without this, browsers keep stale JS/CSS after an update
+        async def static_caching(request: web.Request, handler):
             resp = await handler(request)
-            if request.path.startswith("/static/"):
+            if request.path.startswith(versioned):
+                # a new version gets a new URL, so these never change
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif request.path.startswith("/static/"):
                 resp.headers["Cache-Control"] = "no-cache"
             return resp
 
-        app = web.Application(middlewares=[revalidate_static])
+        app = web.Application(middlewares=[static_caching])
         app.router.add_get("/", self.index)
         app.router.add_get("/ws", self.ws_handler)
+        app.router.add_static(versioned, STATIC)
+
+        async def old_version(request: web.Request) -> web.Response:
+            # a tab opened before the last update
+            raise web.HTTPFound(versioned + request.match_info["path"])
+
+        app.router.add_get("/static/v/{ver}/{path:.*}", old_version)
         app.router.add_static("/static/", STATIC)
 
         async def on_startup(_app):

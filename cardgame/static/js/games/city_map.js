@@ -66,7 +66,7 @@ const focusListeners = [];  // told whenever the hovered city / Pattern changes
 
 function load() {
   if (!loading) {
-    loading = fetch("/static/data/china_map.json").then((r) => r.json()).then((d) => { data = d; });
+    loading = fetch(new URL("../../data/china_map.json", import.meta.url)).then((r) => r.json()).then((d) => { data = d; });
   }
   return loading;
 }

@@ -173,12 +173,22 @@ async def test_import_rejects_broken_game_data(tmp_path):
         await client.close()
 
 
-async def test_static_files_are_revalidated(tmp_path):
+async def test_static_files_are_versioned(tmp_path):
     server, client = await make_client(tmp_path)
     try:
-        for path in ("/", "/static/css/style.css", "/static/js/main.js"):
-            resp = await client.get(path)
+        resp = await client.get("/")
+        assert resp.headers["Cache-Control"] == "no-cache"
+        html = await resp.text()
+        prefix = f"/static/v/{server.static_version}/"
+        assert f'"{prefix}js/main.js"' in html and f'"{prefix}css/style.css"' in html
+        for path in ("js/main.js", "js/games/hearts.js", "data/china_map.json"):
+            resp = await client.get(prefix + path)
             assert resp.status == 200
-            assert resp.headers["Cache-Control"] == "no-cache"
+            assert "immutable" in resp.headers["Cache-Control"]
+        # a tab from before an update is sent to the current files
+        resp = await client.get("/static/v/0ld/js/main.js", allow_redirects=False)
+        assert resp.status == 302 and resp.headers["Location"] == prefix + "js/main.js"
+        resp = await client.get("/static/js/main.js")
+        assert resp.status == 200 and resp.headers["Cache-Control"] == "no-cache"
     finally:
         await client.close()
