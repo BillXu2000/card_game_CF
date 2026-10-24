@@ -419,8 +419,8 @@ function refreshHighlight() {
 }
 
 // ------------------------------------------------------------------ legend
-// The legend lists the Patterns one per row (whole provinces, four of a city
-// and the city pairs are left out), each with its map symbol if it has
+// The legend lists the Patterns one per row, cheapest first (whole provinces,
+// four of a city and the city pairs are left out), each with its map symbol if it has
 // one.  Hovering a row shows the Pattern on the map; clicking pins it.
 const LEGEND_ROWS = {
   "special:长江之歌": { draw: (s) => el("path", { d: "M1,10C6,4 12,12 23,6", class: "cm-river" }, s), text: "长江" },
@@ -443,8 +443,9 @@ function railSymbol(s, kind) {
 function legend() {
   const box = document.createElement("div");
   box.className = "cm-legend";
-  for (const p of current.patterns) {
-    if (NOT_IN_LEGEND.test(p.id)) continue;
+  // cheapest first; equal values keep the rule book's order
+  const shown = current.patterns.filter((p) => !NOT_IN_LEGEND.test(p.id)).sort((a, b) => a.value - b.value);
+  for (const p of shown) {
     const row = LEGEND_ROWS[p.id] ?? {};
     const b = document.createElement("button");
     b.className = "cm-legend-item cm-feature";

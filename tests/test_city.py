@@ -117,8 +117,16 @@ def test_cash_once_per_turn():
         G.act(st, 0, {"type": "cash", "pattern": "pair:上海南京"})
 
 
-def test_buyback_costs_10_and_needs_money():
+def test_buyback_by_default_may_go_negative():
     st = setup(hands={0: ["北京"]}, money=[5, 0, 0])
+    st.move(card_of(st, "天津"), "discard:0")
+    card = G.prompts(st)[0]["buyback"][0]
+    G.act(st, 0, {"type": "buyback", "card": card})
+    assert st.vars["money"][0] == -5 and card in st.zone("hand:0").cards
+
+
+def test_buyback_costs_10_and_needs_money():
+    st = setup(hands={0: ["北京"]}, money=[5, 0, 0], options={"need_money": True})
     st.move(card_of(st, "天津"), "discard:0")
     assert G.prompts(st)[0]["buyback"] == []
     st.vars["money"][0] = 10
