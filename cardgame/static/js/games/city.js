@@ -3,6 +3,7 @@
 // backs, special cards and discard piles, the legend is on the left, the deck
 // and the card just discarded on the right (over the sea), and your hand at
 // the bottom.
+import { pileEl } from "../cards.js";
 import {
   fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
 } from "./city_map.js";
@@ -133,24 +134,23 @@ export function render(el, ctx) {
 
   // ---- centre: deck, the card in play, whose turn
   const centre = div("c-centre");
-  const deck = div("c-deck");
-  const deckCount = view.zones.deck.cards.length;
-  deck.append(deckCount ? back("big") : div("card c-slot"));
-  deck.append(span("c-label", `牌堆 ${deckCount} 张`));
-  deck.append(discardPile(info, view, v, card));
-  centre.append(deck);
-  const focus = div("c-focus");
+  const piles = div("c-piles");
+  piles.append(deckPile(info, view, card));
+  const discard = div("c-discard");
+  const last = v.last_discard;
+  const lastShown = last && view.cards[last.card] && view.zones[v.discard_of[last.by]].cards.includes(last.card);
+  discard.append(discardPile(info, view, v, card, lastShown ? bigCard(card(last.card)) : null));
+  if (lastShown) discard.append(span("c-label c-last", `${name(last.by)} 最近弃置`));
+  piles.append(discard);
+  centre.append(piles);
   if (v.phase === "bid") {
+    const focus = div("c-focus");
     focus.append(span("c-label", "翻开的牌"));
     const row = div("c-row");
     for (const id of view.zones.bonus.cards) row.append(bigCard(card(id)));
     focus.append(row);
-  } else if (v.last_discard && view.cards[v.last_discard.card]
-             && view.zones[v.discard_of[v.last_discard.by]].cards.includes(v.last_discard.card)) {
-    focus.append(span("c-label", `${name(v.last_discard.by)} 最近弃置`));
-    focus.append(bigCard(card(v.last_discard.card)));
+    centre.append(focus);
   }
-  centre.append(focus);
   const turnInfo = span("c-turn", v.phase === "over" ? "游戏结束"
     : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "");
   centre.append(turnInfo);
@@ -325,9 +325,37 @@ function cardsForPattern(info, patternId, handIds, card) {
   return out;
 }
 
-// all discard areas together; hovering lists every city with how many of it
-// were discarded, the ones never discarded faded
-function discardPile(info, view, v, card) {
+// one {el, n} per city, a row per province, for the pile lists
+function cityRows(info, counts) {
+  return Object.entries(info.provinces).map(([province, cities]) => cities.map((city) => {
+    const n = counts[city] ?? 0;
+    const el = div(`mcard ${PROVINCE_CLASS[province]}`);
+    el.textContent = n ? `${city}×${n}` : city;
+    return { el, n };
+  }));
+}
+
+// the draw pile; nobody knows its order, so the list shows the cards this
+// player has not seen anywhere yet: they are in the pile or in another hand
+function deckPile(info, view, card) {
+  const unseen = {};
+  for (const c of Object.values(info.provinces).flat()) unseen[c] = info.copies;
+  for (const [zone, z] of Object.entries(view.zones)) {
+    if (zone === "deck") continue;
+    for (const id of z.cards) {
+      const c = id != null && card(id);
+      if (c?.kind === "city") unseen[c.city]--;
+    }
+  }
+  return pileEl({
+    label: "牌堆", count: view.zones.deck.cards.length, rows: cityRows(info, unseen),
+    title: "还没见过的牌（在牌堆里或别人手里）", pop: "left",
+  });
+}
+
+// all discard areas together; the list shows how many of each city were
+// discarded, the ones never discarded faded
+function discardPile(info, view, v, card, top) {
   const seen = {};
   let total = 0;
   for (const zone of new Set(v.discard_of)) {
@@ -337,22 +365,7 @@ function discardPile(info, view, v, card) {
       total++;
     }
   }
-  const box = div("pile-stat c-pile-stat");
-  box.tabIndex = 0;
-  box.textContent = `弃牌堆 ${total} 张`;
-  const pop = div("pile-pop");
-  for (const [province, cities] of Object.entries(info.provinces)) {
-    const row = div("pile-row");
-    for (const city of cities) {
-      const k = seen[city] ?? 0;
-      const m = div(`mcard ${PROVINCE_CLASS[province]}` + (k ? "" : " absent"));
-      m.textContent = k ? `${city}×${k}` : city;
-      row.append(m);
-    }
-    pop.append(row);
-  }
-  box.append(pop);
-  return box;
+  return pileEl({ label: "弃牌堆", count: total, rows: cityRows(info, seen), top, title: "弃牌区里的牌", pop: "left" });
 }
 
 function finalBox(v, name) {

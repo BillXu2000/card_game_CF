@@ -1,6 +1,6 @@
 // Hearts table, laid out like Windows XP Hearts: you at the bottom, the
 // player on your left (next in turn) at the left, then top, then right.
-import { backEl, cardEl, cardLabel } from "../cards.js";
+import { backEl, cardEl, cardLabel, pileEl } from "../cards.js";
 
 const SUIT_ORDER = { C: 0, D: 1, S: 2, H: 3 };
 const POS = ["bottom", "left", "top", "right"];
@@ -209,21 +209,16 @@ function discardPile(view, cardOf) {
       if (c) played.add(c.suit + c.rank);
     }
   }
-  const box = div("pile-stat hp-pile");
-  box.tabIndex = 0;
-  box.textContent = `弃牌堆 ${played.size} 张`;
-  const pop = div("pile-pop");
-  for (const suit of Object.keys(SUIT_ORDER)) {
-    const row = div("pile-row");
+  const rows = Object.keys(SUIT_ORDER).map((suit) => {
+    const row = [];
     for (let rank = 2; rank <= 14; rank++) {
-      const c = div("mini" + (suit === "H" || suit === "D" ? " red" : "") + (played.has(suit + rank) ? "" : " absent"));
-      c.textContent = cardLabel({ suit, rank });
-      row.append(c);
+      const el = div("mini" + (suit === "H" || suit === "D" ? " red" : ""));
+      el.textContent = cardLabel({ suit, rank });
+      row.push({ el, n: +played.has(suit + rank) });
     }
-    pop.append(row);
-  }
-  box.append(pop);
-  return box;
+    return row;
+  });
+  return pileEl({ label: "弃牌堆", count: played.size, rows, title: "本局已出的牌", pop: "left", cls: "hp-pile" });
 }
 
 function isPoint(c) { return c.suit === "H" || (c.suit === "S" && c.rank === 12); }

@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ...engine import AI, HIDDEN, OWNER, PUBLIC, Game, GameState, IllegalAction
-from .data import CITIES, PATTERN_BY_ID, PATTERNS, PROVINCE_OF, PROVINCES, Pattern
+from .data import CITIES, COPIES, PATTERN_BY_ID, PATTERNS, PROVINCE_OF, PROVINCES, Pattern
 
 HAND_SIZE = {3: 8, 4: 9}
 DRAW = 3
@@ -94,7 +94,7 @@ class CityExchange(Game):
             st.add_zone(f"special:{i}", owner=i, visibility=PUBLIC)
             st.add_zone(f"discard:{i}", owner=i, visibility=PUBLIC)
         for city in CITIES:
-            for _ in range(4):
+            for _ in range(COPIES):
                 st.add_card({"kind": "city", "city": city, "province": PROVINCE_OF[city]}, "deck")
         tours = [st.add_card({"kind": "tour", "name": "周游列国"}, "removed") for _ in range(4)]
         buys = [st.add_card({"kind": "buy", "name": "强买"}, "removed") for _ in range(8)]
@@ -578,6 +578,7 @@ class CityExchange(Game):
     def static_info(self) -> dict:
         return {
             "provinces": PROVINCES,
+            "copies": COPIES,
             "patterns": [{"id": p.id, "name": p.name, "value": p.value, "need": dict(p.need)} for p in PATTERNS],
         }
 
