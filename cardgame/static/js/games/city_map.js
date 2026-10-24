@@ -1,6 +1,6 @@
 // Map of China used as the background of the 城市交易所 table: every city of
 // the game at its real position with standard map symbols, plus the map
-// features some Patterns stand for (长江, railways, 太湖, ports, provinces,
+// features some Patterns stand for (长江, railways, ports, provinces,
 // and icons for 四大火炉 / 泉岭大球 / 古来要塞).  City names appear on hover.
 // Geometry comes from static/data/china_map.json (tools/build_china_map.py).
 
@@ -28,7 +28,6 @@ const FEATURES = {
   "special:长江之歌": { kind: "river", label: "长江" },
   "special:京沪高铁": { kind: "rail", id: "jinghu", label: "京沪高铁" },
   "special:成襄铁路": { kind: "rail", id: "chengxiang", label: "成襄铁路" },
-  "special:苏锡常": { kind: "lake", id: "太湖", label: "环太湖" },
   "special:沿海港口": { kind: "ports", label: "港口" },
   "special:四大火炉": { kind: "fire", label: "火炉" },
   "special:泉岭大球": { kind: "hammer", label: "榔头" },
@@ -256,10 +255,6 @@ function base(svg, name) {
   el("path", { d: data.border, class: "cm-border" }, svg);
   el("path", { d: data.dashes, class: "cm-dashes" }, svg);
   if (name === "locator") return;
-  for (const [lake, d] of Object.entries(data.lakes)) {
-    const p = el("path", { d, class: "cm-lake" }, svg);
-    p.dataset.lake = lake;
-  }
   el("path", { d: data.yellow_river, class: "cm-river yellow" }, svg);
   el("path", { d: data.yangtze, class: "cm-river yangtze" }, svg);
   for (const [id, r] of Object.entries(data.railways)) {
@@ -285,9 +280,8 @@ function drawLabels(svg, k) {
     }
   }
   for (const [text, [x, y]] of Object.entries(data.feature_labels)) {
-    const kind = text === "长江" || text === "太湖" ? "water" : "rail";
-    if (name === "main" && text === "太湖") continue;  // too small; shown in the 长三角 inset
-    if (name !== "main" && text !== "太湖") continue;
+    const kind = text === "长江" ? "water" : "rail";
+    if (name !== "main") continue;
     const t = el("text", { x, y, class: `cm-feature-label ${kind}`, "font-size": 11 * k, "stroke-width": 3 * k,
       "text-anchor": "middle" }, g);
     t.textContent = text;
@@ -419,7 +413,6 @@ function refreshHighlight() {
     }
     for (const r of svg.querySelectorAll(".cm-rail")) r.classList.toggle("on", has("rail", r.dataset.rail));
     for (const r of svg.querySelectorAll(".cm-river.yangtze")) r.classList.toggle("on", has("river"));
-    for (const l of svg.querySelectorAll(".cm-lake")) l.classList.toggle("on", has("lake", l.dataset.lake));
     for (const pr of svg.querySelectorAll(".cm-prov.game")) pr.classList.toggle("on", has("province", pr.dataset.game));
     for (const kind of ICONS) svg.classList.toggle(`${kind}-on`, !cityMode && has(kind));
   }
@@ -431,21 +424,20 @@ function refreshHighlight() {
 }
 
 // ------------------------------------------------------------------ legend
-// The legend lists the Patterns one per row (those of a province, four of a
-// city and the city pairs are left out), each with its map symbol if it has
+// The legend lists the Patterns one per row (whole provinces, four of a city
+// and the city pairs are left out), each with its map symbol if it has
 // one.  Hovering a row shows the Pattern on the map; clicking pins it.
 const LEGEND_ROWS = {
   "special:长江之歌": { draw: (s) => el("path", { d: "M1,10C6,4 12,12 23,6", class: "cm-river" }, s), text: "长江" },
   "special:京沪高铁": { draw: (s) => railSymbol(s, "hsr") },
   "special:成襄铁路": { draw: (s) => railSymbol(s, "rail") },
-  "special:苏锡常": { draw: (s) => el("ellipse", { cx: 12, cy: 8, rx: 9, ry: 5, class: "cm-lake" }, s) },
   "special:沿海港口": { draw: (s) => anchor(s, 12, 8.5, 1.15), text: "港口" },
   "special:四大火炉": { draw: (s) => fire(s, 12, 8.5, 1.3), text: "火炉" },
   "special:泉岭大球": { draw: (s) => hammer(s, 12, 9, 1.15), text: "榔头！" },
   "special:古来要塞": { draw: (s) => fort(s, 12, 8.3, 1.15), text: "要塞" },
   "capitals": { draw: (s) => { el("circle", { cx: 12, cy: 8, r: 4.5, class: "sym-prov-outer" }, s); el("circle", { cx: 12, cy: 8, r: 2.1, class: "sym-prov-inner" }, s); } },
 };
-const NOT_IN_LEGEND = /^(four:|province:|pair:|municipal$)/;
+const NOT_IN_LEGEND = /^(four:|province:|pair:)/;
 
 function railSymbol(s, kind) {
   const g = el("g", { class: `cm-rail ${kind}` }, s);

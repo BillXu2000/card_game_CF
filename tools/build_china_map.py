@@ -3,8 +3,7 @@
 Sources (download into one directory, pass it as the first argument):
   china_full.json   https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json
                     (provinces + 九段线, consistent with the Chinese standard map)
-  ne_50m_admin_0_countries.geojson, ne_10m_rivers_lake_centerlines.geojson,
-  ne_10m_lakes.geojson
+  ne_50m_admin_0_countries.geojson, ne_10m_rivers_lake_centerlines.geojson
                     https://github.com/nvkelso/natural-earth-vector (public domain)
 
 Run:  .venv/bin/pip install shapely
@@ -87,8 +86,6 @@ YANGTZE_ESTUARY = [(119.61, 32.20), (119.80, 32.24), (120.05, 32.02), (120.27, 3
 # province name positions (lon, lat) where the centroid would sit on a city label
 PROVINCE_LABEL = {"江苏省": (119.6, 33.6), "湖北省": (113.4, 31.55), "四川省": (102.3, 31.6), "广东省": (115.6, 24.5),
                   "北京市": (115.75, 40.8), "天津市": (118.45, 39.3), "上海市": (122.55, 30.95), "重庆市": (108.5, 30.75)}
-# only water that matters for the game (太湖 for 苏锡常) plus 黄河 for orientation
-LAKES = {"Tai Hu": "太湖"}
 
 VIEWS = {
     "main": (99.3, 20.6, 123.4, 41.3),
@@ -180,12 +177,9 @@ def main(src: Path) -> None:
                if f["properties"].get("name") in ("Jinsha", "Chang Jiang", "Yangtze")]
     yangtze.append(LineString([project(*p) for p in YANGTZE_ESTUARY]))
     yellow = [project_geom(shape(f["geometry"])) for f in rivers["features"] if f["properties"].get("name") == "Huang"]
-    lakes_src = json.load(open(src / "ne_10m_lakes.geojson", encoding="utf-8"))
-    lakes = {LAKES[f["properties"]["name"]]: project_geom(shape(f["geometry"]))
-             for f in lakes_src["features"] if f["properties"].get("name") in LAKES}
 
     out = {
-        "source": "国界、省界：阿里云 DataV（与国家标准地图一致）；河流、湖泊、邻国：Natural Earth",
+        "source": "国界、省界：阿里云 DataV（与国家标准地图一致）；河流、邻国：Natural Earth",
         "projection": "Albers 等积圆锥投影，标准纬线 25°N/47°N，中央经线 105°E；单位 km",
         "views": {k: bbox_of(*v) for k, v in VIEWS.items()},
         "neighbours": path(simplify(neighbour_land, tol_main=4)),
@@ -201,14 +195,13 @@ def main(src: Path) -> None:
         "dashes": path(dashes) if dashes is not None else "",  # thin polygons: never simplify
         "yangtze": path(simplify(unary_union(yangtze), tol_main=1.5)),
         "yellow_river": path(simplify(unary_union(yellow), tol_main=1.5)),
-        "lakes": {k: path(simplify(g, tol_main=1.0, tol_detail=0.5)) for k, g in lakes.items()},
         "railways": {k: {"name": r["name"], "kind": r["kind"],
                          "d": path(LineString([project(lon, lat) for _, lon, lat in r["via"]]))}
                      for k, r in RAILWAYS.items()},
         "cities": {c: [round(v, 1) for v in project(*ll)] for c, ll in CITIES.items()},
-        # where to write feature names: (lon, lat) next to the line / inside the lake
+        # where to write feature names: (lon, lat) next to the line
         "feature_labels": {name: [round(v, 1) for v in project(*ll)] for name, ll in {
-            "长江": (116.6, 29.55), "京沪高铁": (117.25, 36.7), "成襄铁路": (107.4, 33.3), "太湖": (120.22, 31.2),
+            "长江": (116.6, 29.55), "京沪高铁": (117.25, 36.7), "成襄铁路": (107.4, 33.3),
         }.items()},
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -367,8 +367,6 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-coast { fill: none; stroke: #3a8fc7; stroke-width: .9; vector-effect: non-scaling-stroke; }
 .cm-border { fill: none; stroke: #8e3b63; stroke-width: 1.8; stroke-dasharray: 9 2.5 2 2.5; vector-effect: non-scaling-stroke; }
 .cm-dashes { fill: #8e3b63; }
-.cm-lake { fill: #a9d3ee; stroke: #3a8fc7; stroke-width: .6; vector-effect: non-scaling-stroke; }
-.cm-lake.on { fill: #ffe27a; stroke: #c98c00; stroke-width: 2; }
 .cm-river { fill: none; stroke: #3a8fc7; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .cm-river.on { stroke: #0a5fd8; stroke-width: 4; }
 .cm-river.yellow { stroke-width: 1.3; }
