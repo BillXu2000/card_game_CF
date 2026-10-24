@@ -27,7 +27,7 @@ const FEATURES = {
   "special:沿海港口": { kind: "ports", label: "港口" },
   "special:四大火炉": { kind: "fire", label: "火炉" },
   "special:泉岭大球": { kind: "hammer", label: "榔头" },
-  "special:古来要塞": { kind: "fort", label: "古战场" },
+  "special:古来要塞": { kind: "fort", label: "城堡" },
   "municipal": { kind: "province", id: "直辖市", label: "直辖市" },
   "province:江苏": { kind: "province", id: "江苏", label: "江苏省" },
   "province:湖北": { kind: "province", id: "湖北", label: "湖北省" },
@@ -46,7 +46,8 @@ const LABELS = {
 };
 const INSET_WIDTH = { yrd: 200, prd: 200, locator: 180 };
 const INSET_TITLE = { yrd: "长江三角洲", prd: "珠江三角洲", locator: "全国" };
-const CITY_MARGIN_KM = 110;   // room around the outermost cities when fitting the map
+const CITY_MARGIN_KM = 140;   // room around the outermost cities when fitting the map
+const SYMBOL_SCALE = 2;       // map symbols are drawn at twice their base size
 
 let data = null;
 let loading = null;
@@ -273,10 +274,11 @@ function drawCities(svg, k) {
     if (name !== "main" && (x < x0 || x > x0 + w || y < y0 || y > y0 + h)) continue;
     const prov = current.provinceOf[city];
     const count = current.hand[city] ?? 0;
-    const node = el("g", { class: "cm-city" + (count ? " held" : ""), transform: `translate(${x},${y}) scale(${k})` }, g);
+    const node = el("g", { class: "cm-city" + (count ? " held" : ""),
+      transform: `translate(${x},${y}) scale(${k * SYMBOL_SCALE})` }, g);
     node.dataset.city = city;
     node.style.setProperty("--pv", GAME_COLOR[prov]);
-    el("circle", { r: 9, class: "halo" }, node);
+    el("circle", { r: 7, class: "halo" }, node);
     if (city === CAPITAL) {
       el("circle", { r: 5.5, class: "sym-capital-ring" }, node);
       el("path", { d: star(4.6), class: "sym-capital" }, node);
@@ -320,16 +322,16 @@ function hammer(parent, x, y, size = 1.6) {
   return g;
 }
 
-// 【古来要塞】 crossed swords (the usual map sign for an ancient battlefield)
-function fort(parent, x, y, size = 1.25) {
+// 【古来要塞】 castle: two crenellated towers with arrow slits, a crenellated
+// curtain wall and an arched gate (the usual castle/fortress map sign)
+function fort(parent, x, y, size = 1.1) {
   const g = el("g", { class: "sym-fort", transform: `translate(${x},${y}) scale(${size})` }, parent);
-  for (const angle of [-42, 42]) {
-    const s = el("g", { transform: `rotate(${angle})` }, g);
-    el("path", { d: "M0,-6.2L1,-4.8V2H-1V-4.8Z", class: "blade" }, s);
-    el("rect", { x: -2.7, y: 2, width: 5.4, height: 1.2, rx: 0.5, class: "guard" }, s);
-    el("rect", { x: -0.65, y: 3.2, width: 1.3, height: 2.3, class: "grip" }, s);
-    el("circle", { cy: 6, r: 0.85, class: "guard" }, s);
-  }
+  el("path", {
+    d: "M-6,5V-5.5H-5V-4.5H-4V-5.5H-3V-2.5H-2V-1.5H-1V-2.5H1V-1.5H2V-2.5H3V-5.5H4V-4.5H5V-5.5H6V5Z"
+      + "M-1.3,5V2.6A1.3,1.3 0 0 1 1.3,2.6V5Z"          // gate
+      + "M-4.75,-2.6h0.5v1.7h-0.5Z M4.25,-2.6h0.5v1.7h-0.5Z",  // arrow slits
+    "fill-rule": "evenodd", class: "castle",
+  }, g);
   return g;
 }
 
@@ -430,12 +432,12 @@ function legend() {
     ["港口", (s) => { el("text", { x: 6, y: 13, class: "sym-port" }, s).textContent = "⚓"; }],
     ["火炉（四大火炉）", (s) => fire(s, 12, 8.5, 1.3)],
     ["榔头（泉岭大球）", (s) => hammer(s, 12, 9, 1.15)],
-    ["古战场（古来要塞）", (s) => fort(s, 12, 8, 1.15)],
+    ["城堡（古来要塞）", (s) => fort(s, 12, 8.3, 1.15)],
   ];
   for (const [label, draw] of items) {
     const item = document.createElement("span");
     item.className = "cm-legend-item";
-    const s = el("svg", { width: 30, height: 20, viewBox: "0 0 24 16" });
+    const s = el("svg", { width: 48, height: 32, viewBox: "0 0 24 16" });
     draw(s);
     item.append(s, document.createTextNode(label));
     box.append(item);
