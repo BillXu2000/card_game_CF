@@ -1,12 +1,18 @@
-// 城市交易所 table: a card table like the Hearts one.  You sit at the bottom
-// with your hand; the other players sit around the felt with their money,
-// card backs, special cards and discard piles; the deck and the card just
-// discarded are in the middle.
-import { hoverCity, hoverPattern, mapPanel } from "./city_map.js";
+// 城市交易所 table.  The table top is a map of China with every city of the
+// game; the other players sit along the top edge with their money, card
+// backs, special cards and discard piles, the legend is on the left, the deck
+// and the card just discarded on the right (over the sea), and your hand at
+// the bottom.
+import { fitMap, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend } from "./city_map.js";
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
 const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
+
+// keep the map fitted when the table changes size
+let fitTarget = null;
+const resizer = typeof ResizeObserver === "undefined" ? null
+  : new ResizeObserver(() => { if (fitTarget) fitMap(...fitTarget); });
 
 // pattern reference panel state (kept for the whole session)
 const patternUi = { open: false, all: false };
@@ -30,14 +36,19 @@ export function render(el, ctx) {
   if (cardHover) { cardHover = false; hoverCity(null); }
   el.className = "game city";
   el.innerHTML = "";
-  const felt = div(`felt city-felt n${n}`);
+  const felt = div(`city-table n${n}`);
   el.append(felt);
+  const held = {};
+  if (me != null) for (const id of view.zones[`hand:${me}`].cards) held[card(id).city] = (held[card(id).city] ?? 0) + 1;
+  felt.append(mapBackground(info, held));
 
-  // ---- seats around the table
+  // ---- other players along the top edge
   const base = me ?? 0;
   const pileShownBy = {};
   const mySeatBox = seatBox(base, "bottom");  // goes above my hand
-  for (let k = 1; k < n; k++) felt.append(seatBox((base + k) % n, POS[n][k]));
+  const top = div("c-top");
+  for (let k = 1; k < n; k++) top.append(seatBox((base + k) % n, POS[n][k]));
+  felt.append(top);
 
   function seatBox(i, pos) {
     const box = div(`c-seat c-${pos}` + (v.turn === i && v.phase !== "over" ? " turn" : ""));
@@ -135,7 +146,16 @@ export function render(el, ctx) {
   const turnInfo = span("c-turn", v.phase === "over" ? "游戏结束"
     : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "");
   centre.append(turnInfo);
-  felt.append(centre);
+
+  // ---- middle band: legend | the map shows through | deck and card in play
+  const mid = div("c-mid");
+  const legendSlot = div("c-legend-slot");
+  legendSlot.append(mapLegend());
+  const area = div("c-area");
+  const right = div("c-right");   // deck, card in play, and what the map is showing
+  right.append(centre, mapCaption());
+  mid.append(legendSlot, area, right);
+  felt.append(mid);
 
   // ---- status line
   const status = div("status");
@@ -179,10 +199,9 @@ export function render(el, ctx) {
 
   if (v.phase === "over") felt.append(finalBox(v, name));
 
-  // ---- map of China next to the table
-  const held = {};
-  if (me != null) for (const id of view.zones[`hand:${me}`].cards) held[card(id).city] = (held[card(id).city] ?? 0) + 1;
-  el.append(mapPanel(info, held));
+  fitTarget = [felt, area];
+  if (resizer) { resizer.disconnect(); resizer.observe(felt); }
+  requestAnimationFrame(() => fitMap(felt, area));
 
   // ---- reference + log under the table
   const below = div("c-below");
