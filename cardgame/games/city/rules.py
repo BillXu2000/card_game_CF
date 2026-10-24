@@ -578,7 +578,6 @@ class CityExchange(Game):
     def static_info(self) -> dict:
         return {
             "provinces": PROVINCES,
-            "copies": COPIES,
             "patterns": [{"id": p.id, "name": p.name, "value": p.value, "need": dict(p.need)} for p in PATTERNS],
         }
 

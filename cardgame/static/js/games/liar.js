@@ -140,10 +140,7 @@ function buildActions(box, ctx, prompt, handIds, card, rerender) {
     for (const r of RANK_ORDER) {
       const have = handIds.filter((id) => card(id).rank === r).length;
       const b = button(rankLabel(r) + (have ? ` ×${have}` : ""), () => {
-        ui.x = r;
-        // picking a number selects the cards of it (the jokers stay as they are)
-        ui.selected = new Set([...ui.selected].filter((id) => card(id).joker));
-        for (const id of handIds) if (card(id).rank === r) ui.selected.add(id);
+        ui.x = r;       // only highlights the matching cards; the player selects
         rerender();
       }, false, ui.x === r ? "on" : "ghost");
       ranks.append(b);

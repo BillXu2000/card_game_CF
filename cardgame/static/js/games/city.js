@@ -135,7 +135,7 @@ export function render(el, ctx) {
   // ---- centre: deck, the card in play, whose turn
   const centre = div("c-centre");
   const piles = div("c-piles");
-  piles.append(deckPile(info, view, card));
+  piles.append(pileEl({ label: "牌堆", count: view.zones.deck.cards.length }));
   const discard = div("c-discard");
   const last = v.last_discard;
   const lastShown = last && view.cards[last.card] && view.zones[v.discard_of[last.by]].cards.includes(last.card);
@@ -333,24 +333,6 @@ function cityRows(info, counts) {
     el.textContent = n ? `${city}×${n}` : city;
     return { el, n };
   }));
-}
-
-// the draw pile; nobody knows its order, so the list shows the cards this
-// player has not seen anywhere yet: they are in the pile or in another hand
-function deckPile(info, view, card) {
-  const unseen = {};
-  for (const c of Object.values(info.provinces).flat()) unseen[c] = info.copies;
-  for (const [zone, z] of Object.entries(view.zones)) {
-    if (zone === "deck") continue;
-    for (const id of z.cards) {
-      const c = id != null && card(id);
-      if (c?.kind === "city") unseen[c.city]--;
-    }
-  }
-  return pileEl({
-    label: "牌堆", count: view.zones.deck.cards.length, rows: cityRows(info, unseen),
-    title: "还没见过的牌（在牌堆里或别人手里）", pop: "left",
-  });
 }
 
 // all discard areas together; the list shows how many of each city were
