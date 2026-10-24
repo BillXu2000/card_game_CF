@@ -368,9 +368,6 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .cm-city { cursor: default; }
 .cm-city:hover .cm-label, .cm-city.this .cm-label { opacity: 1; }
 .cm-city:hover .halo { opacity: .6; }
-/* cities in your hand: symbol filled with the province colour */
-.cm-city.held .sym-capital-ring, .cm-city.held .sym-prov-outer, .cm-city.held .sym-pref { fill: var(--pv); }
-.cm-city.held .sym-capital, .cm-city.held .sym-prov-inner, .cm-city.held .sym-pref-dot { fill: #fff; }
 .sym-fire .outer { fill: #e8590c; stroke: #fff; stroke-width: .8; paint-order: stroke; } .sym-fire .inner { fill: #ffd43b; }
 .sym-hammer rect { stroke: #fff; stroke-width: .9; paint-order: stroke; }
 .sym-hammer .handle { fill: #a0632b; } .sym-hammer .head { fill: #2f3a44; }

@@ -38,9 +38,7 @@ export function render(el, ctx) {
   el.innerHTML = "";
   const felt = div(`city-table n${n}`);
   el.append(felt);
-  const held = {};
-  if (me != null) for (const id of view.zones[`hand:${me}`].cards) held[card(id).city] = (held[card(id).city] ?? 0) + 1;
-  felt.append(mapBackground(info, held));
+  felt.append(mapBackground(info));
 
   // ---- other players along the top edge
   const base = me ?? 0;

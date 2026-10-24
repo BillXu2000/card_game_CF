@@ -1,8 +1,7 @@
 // Map of China used as the background of the 城市交易所 table: every city of
 // the game at its real position with standard map symbols, plus the map
 // features some Patterns stand for (长江, railways, 太湖, ports, provinces,
-// and icons for 四大火炉 / 泉岭大球 / 古来要塞).  City names appear on hover;
-// cities you hold are filled with their province colour.
+// and icons for 四大火炉 / 泉岭大球 / 古来要塞).  City names appear on hover.
 // Geometry comes from static/data/china_map.json (tools/build_china_map.py).
 
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -15,10 +14,14 @@ const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口�
 const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
 const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
 const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
-// icon offsets (px) where the default spot would overlap a neighbour
-const HAMMER_AT = { 中山: [-11, 11] };
-// anchors sit on the sea next to each port, in the direction of the open water
-const PORT_AT = { 上海: [9, 9], 天津: [17, 3], 深圳: [1, 11], 汕头: [8, 8] };
+// 中山 sits just south of 广州: point its hammer away so 广州's flame stays visible
+const HAMMER_TURN = { 中山: 220 };
+
+// a city with special icons is drawn as those icons (stacked when there are two)
+function iconsOf(city) {
+  return [PORTS.includes(city) && anchor, FURNACES.includes(city) && fire,
+          FORTS.includes(city) && fort, HAMMERS.includes(city) && hammer].filter(Boolean);
+}
 
 // Patterns that correspond to something drawn on the map
 const FEATURES = {
@@ -58,7 +61,7 @@ let legendBox = null;  // persistent legend element
 let caption = null;    // persistent caption element
 let fitK = null;       // map units per px of the background
 let pendingFit = null; // fit requested before the data arrived
-let current = { hand: {}, patterns: [], provinceOf: {}, pinned: null, hover: null, city: null };
+let current = { patterns: [], provinceOf: {}, pinned: null, hover: null, city: null };
 
 function load() {
   if (!loading) {
@@ -75,12 +78,11 @@ function el(tag, attrs = {}, parent = null) {
 }
 
 // ------------------------------------------------------------------ public
-// The background map.  ``info`` is the game's static info, ``hand`` {city: count}.
-export function mapBackground(info, hand) {
+// The background map.  ``info`` is the game's static info.
+export function mapBackground(info) {
   current.patterns = info.patterns;
   current.provinceOf = {};
   for (const [p, cs] of Object.entries(info.provinces)) for (const c of cs) current.provinceOf[c] = p;
-  current.hand = hand;
   mapLegend();
   if (!bg) {
     bg = document.createElement("div");
@@ -275,13 +277,16 @@ function drawCities(svg, k) {
   for (const [city, [x, y]] of Object.entries(data.cities)) {
     if (name !== "main" && (x < x0 || x > x0 + w || y < y0 || y > y0 + h)) continue;
     const prov = current.provinceOf[city];
-    const count = current.hand[city] ?? 0;
-    const node = el("g", { class: "cm-city" + (count ? " held" : ""),
+    const node = el("g", { class: "cm-city",
       transform: `translate(${x},${y}) scale(${k * SYMBOL_SCALE})` }, g);
     node.dataset.city = city;
     node.style.setProperty("--pv", GAME_COLOR[prov]);
     el("circle", { r: 7, class: "halo" }, node);
-    if (city === CAPITAL) {
+    const icons = iconsOf(city);
+    if (icons.length) {
+      // the icons replace the city sign
+      for (const draw of icons) draw(node, 0, 0, undefined, city);
+    } else if (city === CAPITAL) {
       el("circle", { r: 5.5, class: "sym-capital-ring" }, node);
       el("path", { d: star(4.6), class: "sym-capital" }, node);
     } else if (prov === "直辖市" || CAPITALS.includes(city)) {
@@ -291,13 +296,9 @@ function drawCities(svg, k) {
       el("circle", { r: 3.2, class: "sym-pref" }, node);
       el("circle", { r: 0.9, class: "sym-pref-dot" }, node);
     }
-    if (PORTS.includes(city)) anchor(node, ...PORT_AT[city]);
-    if (FURNACES.includes(city)) fire(node, 9, -10);
-    if (HAMMERS.includes(city)) hammer(node, ...(HAMMER_AT[city] ?? [10, -11]));
-    if (FORTS.includes(city)) fort(node, -10, -10);
-    const [dx, dy, align] = LABELS[name][city] ?? [7, 4, "start"];
+    const [dx, dy, align] = LABELS[name][city] ?? (icons.length ? [9, 4, "start"] : [7, 4, "start"]);
     const t = el("text", { x: dx, y: dy, "text-anchor": align, class: "cm-label" }, node);
-    t.textContent = city + (count ? ` ×${count}` : "");
+    t.textContent = city;
     // bring the hovered city to the front so its name is not hidden by neighbours
     node.addEventListener("mouseenter", () => {
       if (g.lastChild !== node) g.append(node);
@@ -309,8 +310,8 @@ function drawCities(svg, k) {
 
 // ------------------------------------------------------------------- icons
 // 【沿海港口】 black anchor with a white outline
-function anchor(parent, x, y, size = 0.9) {
-  const g = el("g", { class: "sym-port", transform: `translate(${x},${y}) scale(${size})` }, parent);
+function anchor(parent, x, y, size = 0.95) {
+  const g = el("g", { class: "sym-port", transform: `translate(${x},${y}) scale(${size}) translate(0,0.6)` }, parent);
   const d = "M0,-3.4V4.6M-2.6,-2.3H2.6M-4.2,1.2A4.4,4.4 0 0 0 4.2,1.2"
     + "M-4.2,1.2l-1.2,0.9M-4.2,1.2l0.3,1.4M4.2,1.2l1.2,0.9M4.2,1.2l-0.3,1.4";
   for (const cls of ["halo-line", "ink"]) {
@@ -322,16 +323,17 @@ function anchor(parent, x, y, size = 0.9) {
 }
 
 // 【四大火炉】 flame
-function fire(parent, x, y, size = 1.25) {
-  const g = el("g", { class: "sym-fire", transform: `translate(${x},${y}) scale(${size})` }, parent);
+function fire(parent, x, y, size = 1.15) {
+  const g = el("g", { class: "sym-fire", transform: `translate(${x},${y}) scale(${size}) translate(0,0.4)` }, parent);
   el("path", { d: "M0,-5.5C2.8,-2.2 4,0 3.2,2.6C2.4,5 -2.4,5 -3.2,2.6C-3.9,0.4 -1.6,-0.6 0,-5.5Z", class: "outer" }, g);
   el("path", { d: "M0,-0.8C1.5,1 1.6,2.7 0,3.8C-1.6,2.7 -1.5,1 0,-0.8Z", class: "inner" }, g);
   return g;
 }
 
 // 【泉岭大球】 hammer: big, dark head on a wooden handle, with a white outline
-function hammer(parent, x, y, size = 1.6) {
-  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(-40)` }, parent);
+function hammer(parent, x, y, size = 1.3, city = null) {
+  const turn = HAMMER_TURN[city] ?? -40;
+  const g = el("g", { class: "sym-hammer", transform: `translate(${x},${y}) scale(${size}) rotate(${turn}) translate(0,-0.6)` }, parent);
   el("rect", { x: -1.1, y: -2.6, width: 2.2, height: 9.5, rx: 0.6, class: "handle" }, g);
   el("rect", { x: -5, y: -5.8, width: 10, height: 4, rx: 0.8, class: "head" }, g);
   return g;
@@ -339,7 +341,7 @@ function hammer(parent, x, y, size = 1.6) {
 
 // 【古来要塞】 castle: two crenellated towers with arrow slits, a crenellated
 // curtain wall and an arched gate (the usual castle/fortress map sign)
-function fort(parent, x, y, size = 1.1) {
+function fort(parent, x, y, size = 1) {
   const g = el("g", { class: "sym-fort", transform: `translate(${x},${y}) scale(${size})` }, parent);
   el("path", {
     d: "M-6,5V-5.5H-5V-4.5H-4V-5.5H-3V-2.5H-2V-1.5H-1V-2.5H1V-1.5H2V-2.5H3V-5.5H4V-4.5H5V-5.5H6V5Z"
@@ -435,12 +437,6 @@ function legend() {
     ["首都", (s) => { el("circle", { cx: 12, cy: 8, r: 5.5, class: "sym-capital-ring" }, s); el("path", { d: star(4.6), transform: "translate(12,8)", class: "sym-capital" }, s); }],
     ["省级行政中心", (s) => { el("circle", { cx: 12, cy: 8, r: 4.5, class: "sym-prov-outer" }, s); el("circle", { cx: 12, cy: 8, r: 2.1, class: "sym-prov-inner" }, s); }],
     ["地级行政中心", (s) => { el("circle", { cx: 12, cy: 8, r: 3.2, class: "sym-pref" }, s); el("circle", { cx: 12, cy: 8, r: 0.9, class: "sym-pref-dot" }, s); }],
-    ["手里有的城市", (s) => {
-      const g = el("g", { class: "cm-city held", transform: "translate(12,8)" }, s);
-      g.style.setProperty("--pv", GAME_COLOR["江苏"]);
-      el("circle", { r: 3.2, class: "sym-pref" }, g);
-      el("circle", { r: 0.9, class: "sym-pref-dot" }, g);
-    }],
     ["国界", line("cm-border")],
     ["省级界", line("cm-prov-line")],
     ["海岸线", line("cm-coast")],
