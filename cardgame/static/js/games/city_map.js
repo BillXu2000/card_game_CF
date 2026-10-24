@@ -14,6 +14,9 @@ const PORTS = ["上海", "天津", "深圳", "汕头"];      // 【沿海港口�
 const FURNACES = ["重庆", "武汉", "南京", "广州"];   // 【四大火炉】
 const HAMMERS = ["十堰", "襄阳", "中山", "广元"];    // 【泉岭大球】
 const FORTS = ["徐州", "荆州", "襄阳", "广元"];      // 【古来要塞】
+// hammers sit half an icon (16.7 x 17.7 units) to the lower right of the city
+const HAMMER_SHIFT = [8.4, 8.9];
+
 // a city with special icons is drawn as those icons (stacked when there are two)
 function iconsOf(city) {
   return [PORTS.includes(city) && anchor, FURNACES.includes(city) && fire,
@@ -282,7 +285,7 @@ function drawCities(svg, k) {
     const icons = iconsOf(city);
     if (icons.length) {
       // the icons replace the city sign
-      for (const draw of icons) draw(node, 0, 0);
+      for (const draw of icons) draw(node, ...(draw === hammer ? HAMMER_SHIFT : [0, 0]));
     } else if (city === CAPITAL) {
       el("circle", { r: 5.5, class: "sym-capital-ring" }, node);
       el("path", { d: star(4.6), class: "sym-capital" }, node);
