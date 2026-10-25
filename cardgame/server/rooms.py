@@ -18,6 +18,8 @@ from ..games import GAMES, get_game
 from .storage import Storage
 
 log = logging.getLogger(__name__)
+CHAT_KEEP = 200     # chat messages kept per room
+CHAT_MAX_LEN = 300
 
 
 class RoomError(Exception):
@@ -52,6 +54,7 @@ class Room:
         self.state: GameState | None = None
         self.history: list[dict] = []
         self.created = time.time()
+        self.chat: list[dict] = []   # {"user", "text", "time"}
         self.ai_task: asyncio.Task | None = None
 
     @property
@@ -88,6 +91,7 @@ class Room:
             "options": self.options,
             "seats": [s.to_dict() for s in self.seats],
             "created": self.created,
+            "chat": self.chat,
             "state": self.state.to_dict() if self.state else None,
         }
 
@@ -120,6 +124,7 @@ class RoomManager:
                 room = Room(code, m["game"], m["host"], len(m["seats"]), m.get("options", {}))
                 room.seats = [Seat(s.get("user"), s.get("ai")) for s in m["seats"]]
                 room.created = m.get("created", time.time())
+                room.chat = m.get("chat", [])
                 if m.get("state"):
                     room.state = self._load_state(room, m["state"])
                     room.game.prompts(room.state)  # fail here, not later, if the state is unusable
@@ -364,6 +369,19 @@ class RoomManager:
         room = self.get(code)
         self._require_host(room, user)
         return [{"index": i, "label": h["label"], "time": h["time"]} for i, h in enumerate(room.history)]
+
+    def say(self, user: str, code: object, text: object) -> tuple[Room, dict]:
+        """Add a chat message; anybody looking at the room may chat."""
+        room = self.get(code)
+        text = text.strip() if isinstance(text, str) else ""
+        if not text:
+            raise RoomError("消息不能为空")
+        if len(text) > CHAT_MAX_LEN:
+            raise RoomError(f"消息最多 {CHAT_MAX_LEN} 字")
+        entry = {"user": user, "text": text, "time": time.time()}
+        room.chat = (room.chat + [entry])[-CHAT_KEEP:]
+        self.save(room)
+        return room, entry
 
     # ------------------------------------------------------------ game moves
     def act(self, room: Room, seat: int, action: object, by: str) -> None:

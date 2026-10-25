@@ -192,3 +192,32 @@ async def test_static_files_are_versioned(tmp_path):
         assert resp.status == 200 and resp.headers["Cache-Control"] == "no-cache"
     finally:
         await client.close()
+
+
+async def test_room_chat(tmp_path):
+    server, client = await make_client(tmp_path, "d")
+    try:
+        amy, _ = await connect(client, "amy")
+        await amy.send(op="create", game="duel")
+        code = (await amy.expect("room"))["room"]["code"]
+        assert (await amy.expect("chat"))["items"] == []
+        bob, _ = await connect(client, "bob")
+        await bob.send(op="chat", code=code, text="hi")
+        assert (await bob.expect("error"))["message"] == "请先进入房间"
+        await bob.send(op="join", code=code)
+        await bob.expect("chat", pred=lambda m: m["reset"])
+        await bob.send(op="chat", code=code, text="  你好  ")
+        for ws in (amy, bob):
+            m = await ws.expect("chat", pred=lambda m: not m["reset"])
+            assert [(e["user"], e["text"]) for e in m["items"]] == [("bob", "你好")]
+        await bob.send(op="chat", code=code, text="   ")
+        assert (await bob.expect("error"))["message"] == "消息不能为空"
+        # the chat is kept with the room and sent to whoever enters it
+        await client.close()
+        server, client = await make_client(tmp_path, "d")
+        carl, _ = await connect(client, "carl")
+        await carl.send(op="join", code=code)
+        m = await carl.expect("chat")
+        assert m["reset"] and [e["text"] for e in m["items"]] == ["你好"]
+    finally:
+        await client.close()

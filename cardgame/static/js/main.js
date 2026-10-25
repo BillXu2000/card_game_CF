@@ -14,7 +14,9 @@ const app = {
   room: null,          // last room message
   renderers: {},       // game id -> module
   wantRoom: null,      // room code to reopen after reconnect
+  chat: { code: null, items: [], unread: 0 },
 };
+const CHAT_OPEN_KEY = "cardgame.chatOpen";
 
 function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function storageSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
@@ -83,6 +85,9 @@ function onMessage(m) {
     case "history":
       showHistory(m.items);
       break;
+    case "chat":
+      onChat(m);
+      break;
     case "export":
       download(`${m.code}-${m.state.game}-${m.state.seq}.json`, JSON.stringify(m.state, null, 1));
       break;
@@ -113,6 +118,71 @@ function download(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// ------------------------------------------------------------------- chat
+// A box in the corner of the room, folded by default; while folded it counts
+// unread messages and shows the latest one.
+function chatOpen() { return !$("chat").classList.contains("folded"); }
+
+function setChatOpen(open) {
+  $("chat").classList.toggle("folded", !open);
+  storageSet(CHAT_OPEN_KEY, open ? "1" : null);
+  if (open) {
+    app.chat.unread = 0;
+    renderChat();
+    const list = $("chat-list");
+    list.scrollTop = list.scrollHeight;
+  }
+}
+setChatOpen(storageGet(CHAT_OPEN_KEY) === "1");
+
+function onChat(m) {
+  const c = app.chat;
+  if (m.reset) {
+    app.chat = { code: m.code, items: m.items, unread: 0 };
+  } else if (c.code === m.code) {
+    c.items.push(...m.items);
+    if (!chatOpen()) c.unread += m.items.filter((e) => e.user !== app.user).length;
+  }
+  renderChat();
+}
+
+function renderChat() {
+  const { items, unread } = app.chat;
+  const list = $("chat-list");
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  list.innerHTML = "";
+  if (!items.length) list.innerHTML = `<div class="muted chat-empty">还没有消息</div>`;
+  for (const e of items) {
+    const row = document.createElement("div");
+    row.className = "chat-msg" + (e.user === app.user ? " mine" : "");
+    const who = document.createElement("span");
+    who.className = "chat-user";
+    who.textContent = e.user;
+    const time = document.createElement("span");
+    time.className = "chat-time";
+    time.textContent = new Date(e.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const text = document.createElement("div");
+    text.className = "chat-text";
+    text.textContent = e.text;
+    row.append(who, time, text);
+    list.append(row);
+  }
+  if (atBottom) list.scrollTop = list.scrollHeight;
+  $("chat-unread").textContent = unread;
+  $("chat-unread").classList.toggle("hidden", !unread);
+  const last = items[items.length - 1];
+  $("chat-preview").textContent = unread && last ? `${last.user}：${last.text}` : "";
+}
+
+$("chat-head").onclick = () => setChatOpen(!chatOpen());
+$("chat-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = $("chat-input");
+  if (!input.value.trim() || !app.room) return;
+  send({ op: "chat", code: app.room.code, text: input.value });
+  input.value = "";
+});
 
 // ------------------------------------------------------------------ login
 $("login-form").addEventListener("submit", (e) => {

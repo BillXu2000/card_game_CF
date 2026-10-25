@@ -10,13 +10,14 @@ client → server
     start {code}
     action {code, action}           history {code}      rollback {code, index}
     export {code}                   import {code, state}
-    close {code}
+    close {code}                    chat {code, text}
 
 server → client
     login_ok {username, token, created}     error {message, op}
     lobby {rooms, games}                    room {room}
     room_closed {code}                      history {code, items}
     export {code, state}
+    chat {code, items, reset?}      (reset: the room's whole chat, sent on entering it)
 """
 from __future__ import annotations
 
@@ -103,6 +104,9 @@ class Server:
             },
         }
 
+    def chat_message(self, room: Room, items: list[dict], reset: bool = False) -> dict:
+        return {"op": "chat", "code": room.code, "items": items, "reset": reset}
+
     def _spawn(self, coro) -> None:
         import asyncio
         t = asyncio.get_running_loop().create_task(coro)
@@ -163,10 +167,20 @@ class Server:
             room = R.create(user, msg.get("game"), msg.get("players"), msg.get("options"))
             c.room = room.code
             await c.send(self.room_message(room, user))
+            await c.send(self.chat_message(room, room.chat, reset=True))
         elif op == "join":
             room = R.get(code)
             c.room = room.code
             R.join(user, room.code)
+            await c.send(self.chat_message(room, room.chat, reset=True))
+        elif op == "chat":
+            room = R.get(code)
+            if c.room != room.code:
+                raise RoomError("请先进入房间")
+            room, entry = R.say(user, room.code, msg.get("text"))
+            for other in list(self.clients):
+                if other.user and other.room == room.code:
+                    self._spawn(other.send(self.chat_message(room, [entry])))
         elif op == "leave":
             room = R.get(code)
             c.room = None
