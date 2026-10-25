@@ -65,20 +65,17 @@
   </header>
   <div id="seats" class="seats"></div>
   <div id="options" class="options"></div>
-  <div id="game" class="game"></div>
-  <aside id="chat" class="chat">
-    <button id="chat-head" class="chat-head" type="button">
-      <span class="chat-title">聊天</span><span id="chat-unread" class="chat-unread hidden"></span>
-      <span id="chat-preview" class="chat-preview"></span><span class="chat-toggle"></span>
-    </button>
-    <div class="chat-body">
+  <div class="room-body">
+    <div id="game" class="game"></div>
+    <aside id="chat" class="chat panel">
+      <h3 class="chat-head">聊天</h3>
       <div id="chat-list" class="chat-list"></div>
       <form id="chat-form" class="chat-form">
         <input id="chat-input" maxlength="300" placeholder="说点什么…" autocomplete="off">
         <button type="submit" class="small">发送</button>
       </form>
-    </div>
-  </aside>
+    </aside>
+  </div>
 </section>
 
 <dialog id="history-dlg">
