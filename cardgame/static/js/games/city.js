@@ -5,7 +5,7 @@
 // the bottom.
 import { pileEl } from "../cards.js";
 import {
-  fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
+  dropRedrawnHovers, fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
 } from "./city_map.js";
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
@@ -85,7 +85,7 @@ export function render(el, ctx) {
   const info = ctx.room.static;
   const cityOrder = Object.values(info.provinces).flat();
 
-  if (cardHover) { cardHover = false; hoverCity(null); }
+  dropRedrawnHovers();
   el.className = "game city";
   el.innerHTML = "";
   const felt = div(`city-table n${n}`);
@@ -485,8 +485,6 @@ function sortCards(ids, card, cityOrder) {
 }
 
 // hovering a city card highlights that city's Patterns on the map
-let cardHover = false;  // the card is replaced on re-render without a mouseleave
-
 // while a city or Pattern is hovered (map, cards, Pattern table, buttons)
 // every card of a city outside it fades
 let tableEl = null;
@@ -500,8 +498,8 @@ onFocusChange(fadeOtherCities);
 
 function linkToMap(d, c) {
   d.dataset.city = c.city;
-  d.addEventListener("mouseenter", () => { cardHover = true; hoverCity(c.city); });
-  d.addEventListener("mouseleave", () => { cardHover = false; hoverCity(null); });
+  d.addEventListener("mouseenter", () => hoverCity(c.city));
+  d.addEventListener("mouseleave", () => hoverCity(null));
   return d;
 }
 

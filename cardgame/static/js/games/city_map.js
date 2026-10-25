@@ -61,6 +61,7 @@ let caption = null;    // persistent caption element
 let fitK = null;       // map units per px of the background
 let pendingFit = null; // fit requested before the data arrived
 let current = { patterns: [], provinceOf: {}, held: new Set(), pinned: null, hover: null, city: null };
+let legendHover = false;    // current.hover comes from the legend
 const focusListeners = [];  // told whenever the hovered city / Pattern changes
 
 function load() {
@@ -149,6 +150,18 @@ export function fitMap(felt, area) {
 export function hoverPattern(patternId) {
   if (current.hover === patternId) return;
   current.hover = patternId;
+  if (data && bg) refreshHighlight();
+  notifyFocus();
+}
+
+// Hovers on things a render redraws (map cities, cards, action buttons) never
+// see their mouseleave, so every render drops them.  Only the legend is never
+// redrawn and keeps its hover.
+export function dropRedrawnHovers() {
+  const hover = legendHover ? current.hover : null;
+  if (current.city == null && current.hover === hover) return;
+  current.city = null;
+  current.hover = hover;
   if (data && bg) refreshHighlight();
   notifyFocus();
 }
@@ -460,8 +473,8 @@ function legend() {
     value.className = "cm-legend-value";
     value.textContent = p.value;
     b.append(s, name, value);
-    b.onmouseenter = () => hoverPattern(p.id);
-    b.onmouseleave = () => hoverPattern(null);
+    b.onmouseenter = () => { hoverPattern(p.id); legendHover = true; };
+    b.onmouseleave = () => { legendHover = false; hoverPattern(null); };
     b.onclick = () => { current.pinned = current.pinned === p.id ? null : p.id; refreshHighlight(); };
     box.append(b);
   }
