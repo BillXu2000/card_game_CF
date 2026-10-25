@@ -5,9 +5,29 @@ import pytest
 
 from cardgame.engine import GameState, IllegalAction
 from cardgame.games.city.data import PATTERN_BY_ID, PATTERNS
+from cardgame.games.city import rules
 from cardgame.games.city.rules import CityExchange
 
 G = CityExchange()
+
+
+class Clock:
+    """Stands in for the wall clock: by default each reading is 10 s after
+    the previous one, so the waits after discards are always over."""
+    def __init__(self):
+        self.t = 1000.0
+        self.step = 10.0
+
+    def __call__(self):
+        self.t += self.step
+        return self.t
+
+
+@pytest.fixture(autouse=True)
+def clock(monkeypatch):
+    c = Clock()
+    monkeypatch.setattr(rules, "now", c)
+    return c
 
 
 def card_of(st, city, avoid=()):
@@ -422,3 +442,64 @@ def test_migrate_state_from_blocking_dianpao_version():
     old = G.migrate(GameState.from_dict(d))
     assert old.vars["phase"] == "main" and old.vars["offers"] == [] and "pending" not in old.vars
     assert G.prompts(old)[0]["type"] == "main"
+
+
+def discard_state(clock):
+    """Seat 0 has just discarded 北京, which seat 1 can 点炮; the clock stands still."""
+    st = setup(hands={0: ["北京"], 1: ["北京", "北京", "北京"], 2: ["上海"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    clock.step = 0
+    G.act(st, 0, {"type": "discard", "card": st.zone("hand:0").cards[0]})
+    return st
+
+
+def test_only_dianpao_in_the_seconds_after_a_discard(clock):
+    st = discard_state(clock)
+    with pytest.raises(IllegalAction, match="等待点炮"):
+        G.act(st, 0, {"type": "end"})
+    clock.t += rules.DISCARD_WAIT - 0.5
+    with pytest.raises(IllegalAction):
+        G.act(st, 0, {"type": "end"})
+    assert G.ai_wait(st, 0, G.prompts(st)[0]) == pytest.approx(0.5)
+    assert G.ai_wait(st, 1, G.prompts(st)[1]) == 0          # 点炮 is never held up
+    clock.t += 1
+    G.act(st, 0, {"type": "end"})
+    assert st.vars["turn"] == 1
+
+
+def test_think_holds_the_others_until_the_thinker_is_done(clock):
+    st = discard_state(clock)
+    # seat 2 cannot 点炮 but may 长考 all the same, and only once per discard
+    assert G.view(st, 2)["hold"]["can_think"] and not G.view(st, 0)["hold"]["can_think"]
+    G.act(st, 2, {"type": "think"})
+    with pytest.raises(IllegalAction):
+        G.act(st, 2, {"type": "think"})
+    with pytest.raises(IllegalAction):
+        G.act(st, 1, {"type": "think"})                      # one 长考 at a time
+    clock.t += 20
+    with pytest.raises(IllegalAction, match="长考中"):
+        G.act(st, 0, {"type": "end"})
+    assert G.view(st, 0)["hold"]["think"] == {"seat": 2, "left": pytest.approx(10)}
+    G.act(st, 2, {"type": "think_end"})
+    G.act(st, 1, {"type": "think"})                          # now seat 1 may
+    claim = G.prompts(st)[1]["claims"][0]
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})  # ends the 长考
+    G.act(st, 0, {"type": "end"})
+
+
+def test_think_runs_out_and_lapses_with_the_turn(clock):
+    st = discard_state(clock)
+    G.act(st, 1, {"type": "think"})
+    clock.t += rules.THINK_TIME + 0.1
+    assert G.view(st, 0)["hold"]["think"] is None
+    G.act(st, 0, {"type": "end"})
+    with pytest.raises(IllegalAction):
+        G.act(st, 2, {"type": "think"})                      # the discard can no longer be claimed
+
+
+def test_who_can_dianpao_is_not_shown(clock):
+    st = discard_state(clock)
+    assert G.prompts(st).keys() == {0, 1}
+    assert G.waiting(st, G.prompts(st)) == [0]
+    assert st.vars["offers"] and "offers" not in G.view(st, 2)["vars"]

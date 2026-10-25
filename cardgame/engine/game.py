@@ -92,6 +92,15 @@ class Game:
         """Seconds an AI waits before answering ``prompt`` (pacing for humans)."""
         return 0.8
 
+    def ai_wait(self, st: GameState, seat: int, prompt: dict) -> float:
+        """Seconds before the rules let ``seat`` answer ``prompt`` (real time,
+        unlike ``ai_delay`` not scaled by the AI speed)."""
+        return 0.0
+
+    def waiting(self, st: GameState, prompts: dict[int, dict]) -> list[int]:
+        """Seats shown to everybody as having to decide."""
+        return sorted(prompts)
+
     def describe(self, st: GameState, seat: int, action: dict) -> str:
         """Short label for the history list."""
         return action.get("type", "?")

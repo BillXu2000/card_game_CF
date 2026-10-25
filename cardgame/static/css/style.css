@@ -305,6 +305,9 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .c-seat.c-bottom { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 14px; align-self: stretch; }
 .c-seat.turn { box-shadow: 0 0 0 3px #ffd84a, 0 2px 8px rgba(0,0,0,.3); }
 .c-thinking { font-size: 12px; color: #222; background: #ffd84a; border-radius: 4px; padding: 0 6px; }
+.c-countdown { font-weight: 800; color: #ffd84a; font-variant-numeric: tabular-nums; }
+.c-hold { color: #ffe9a8; }
+.c-actions button .c-countdown { color: inherit; }
 .c-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .c-name { font-weight: 700; font-size: 16px; }
 .c-money { margin-left: auto; font-weight: 800; font-size: 17px; color: #ffe27a; background: rgba(0,0,0,.35); padding: 1px 10px; border-radius: 12px; }

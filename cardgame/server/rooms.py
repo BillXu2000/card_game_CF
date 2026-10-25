@@ -378,6 +378,7 @@ class RoomManager:
         room.state = new
         self._record(room, f"{by}：{label}")
         self._changed(room)
+        self._cancel_ai(room)  # a waiting AI may have something else to do now
         self._schedule_ai(room)
 
     def human_action(self, user: str, code: object, action: object) -> Room:
@@ -405,9 +406,11 @@ class RoomManager:
             return
         # several AIs may be able to act at once (e.g. 点炮 next to the normal turn):
         # the one with the shortest delay goes first
-        delays = {s: room.game.ai_delay(room.state, prompts[s]) for s in seats}
+        # some moves must wait for a real-time window, whatever the AI speed
+        delays = {s: max(room.game.ai_delay(room.state, prompts[s]) * self.ai_speed,
+                         room.game.ai_wait(room.state, s, prompts[s]) + 0.05) for s in seats}
         seat = min(seats, key=lambda s: (delays[s], s))
-        delay = delays[seat] * self.ai_speed
+        delay = delays[seat]
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -421,7 +424,8 @@ class RoomManager:
             return
         st = room.state
         prompt = room.game.prompts(st).get(seat)
-        if st.seq == seq and prompt is not None and room.seats[seat].ai:
+        if (st.seq == seq and prompt is not None and room.seats[seat].ai
+                and room.game.ai_wait(st, seat, prompt) <= 0):
             try:
                 action = room.game.make_ai().choose(room.game.view(st, seat), prompt)
                 self.act(room, seat, action, room.seats[seat].ai)

@@ -7,10 +7,18 @@ players who could use it a 点炮 offer.  Offers do not block the game: the
 player whose turn it is keeps playing while others claim or decline, and
 offers lapse when the turn ends or the card leaves the discard pile.
 
+So that 点炮 is not a race, every discard is followed by DISCARD_WAIT
+seconds in which nobody may do anything but 点炮.  Any player other than the
+discarder (able to 点炮 or not, so it tells nothing) may 长考 once per
+discard: for up to THINK_TIME seconds the others may only 点炮, until the
+thinker claims, declines, acts otherwise or ends the 长考.  Who can 点炮 is
+never shown to the other players.
+
 Points the rule book leaves open are room options (see ``option_specs``).
 """
 from __future__ import annotations
 
+import time
 from collections import Counter
 
 from ...engine import AI, HIDDEN, OWNER, PUBLIC, Game, GameState, IllegalAction
@@ -21,12 +29,18 @@ DRAW = 3
 BUYBACK_COST = 10
 BUY_PRICE = 4
 TOUR_FINE = 6
+DISCARD_WAIT = 3    # seconds after a discard in which only 点炮 is allowed
+THINK_TIME = 30     # longest 长考
 # 斗地主 mode (rule book 3.2)
 LANDLORD_HAND = 4
 LANDLORD_BONUS = 4
 LANDLORD_DRAW = 4
 LANDLORD_BUY_PRICE = 2
 FARMERS = "farmers"
+
+
+def now() -> float:
+    return time.time()   # replaced in tests
 
 
 def contains(have: Counter, need: Counter) -> bool:
@@ -115,6 +129,9 @@ class CityExchange(Game):
             drawn_count=0,
             offers=[],        # open 点炮 offers, see _open_offer
             next_offer=0,
+            window=None,      # the latest discard while it can be 点炮'd, see _open_window
+            hold_until=0,     # only 点炮 until then (epoch seconds)
+            think=None,       # {"seat", "until"}: a 长考 in progress
             tour=None,
             cash_count=[0] * n,
             dianpao_count=[0] * n,
@@ -261,6 +278,7 @@ class CityExchange(Game):
         seat = v["turn"]
         st.private[seat].pop("drawn", None)
         v["offers"] = []  # 点炮 offers not taken during the turn lapse
+        v.update(window=None, think=None)
         if not st.zone("deck").cards:
             lord = v.get("landlord")
             if lord is not None and st.options["landlord_score"] == "sum":
@@ -366,7 +384,14 @@ class CityExchange(Game):
         phase = st.vars["phase"]
         kind = action["type"]
         if kind == "dianpao" and phase != "over":
+            self._stop_thinking(st, seat)
             return self._act_dianpao(st, seat, action.get("offer"), action.get("choices"))
+        wait = self.blocked_for(st, seat)
+        if wait > 0:
+            think = st.vars["think"]
+            who = f"{P(think['seat'])} 长考中" if think and now() < think["until"] else "等待点炮"
+            raise IllegalAction(f"{who}，还要 {wait:.0f} 秒才能做点炮以外的操作")
+        self._stop_thinking(st, seat)
         if phase == "draw":
             if kind == "discard":
                 return self._act_draw_discard(st, seat, action.get("card"))
@@ -384,6 +409,58 @@ class CityExchange(Game):
         elif phase == "give" and kind == "give":
             return self._act_give(st, seat, action.get("card"))
         raise IllegalAction("现在不能这样做")
+
+    def act(self, st: GameState, seat: int, action) -> None:
+        # anyone seated may 长考, whether or not they have a prompt (it must not
+        # tell whether they can 点炮)
+        if isinstance(action, dict) and action.get("type") in ("think", "think_end"):
+            if not isinstance(seat, int) or not 0 <= seat < st.num_players:
+                raise IllegalAction("你没有座位")
+            (self._act_think if action["type"] == "think" else self._act_think_end)(st, seat)
+            st.seq += 1
+            return
+        super().act(st, seat, action)
+
+    def blocked_for(self, st: GameState, seat: int) -> float:
+        """Seconds until ``seat`` may do something other than 点炮."""
+        v = st.vars
+        t = now()
+        left = v.get("hold_until", 0) - t
+        think = v.get("think")
+        if think and think["seat"] != seat:
+            left = max(left, think["until"] - t)
+        return max(0.0, left)
+
+    def can_think(self, st: GameState, seat: int | None) -> bool:
+        """``seat`` may start a 长考 on the latest discard (time aside: the
+        caller also checks that nobody else is thinking)."""
+        w = st.vars.get("window")
+        return (seat is not None and w is not None and st.vars["phase"] != "over" and seat != w["by"]
+                and seat not in w["thought"] and any(st.where(c) == w["zone"] for c in w["cards"]))
+
+    def _act_think(self, st: GameState, seat: int) -> None:
+        v = st.vars
+        if not self.can_think(st, seat):
+            raise IllegalAction("现在不能长考")
+        think = v["think"]
+        if think and think["seat"] != seat and now() < think["until"]:
+            raise IllegalAction(f"{P(think['seat'])} 正在长考")
+        v["window"]["thought"].append(seat)
+        v["think"] = {"seat": seat, "until": now() + THINK_TIME}
+        st.log(f"{P(seat)} 长考（最多 {THINK_TIME} 秒）")
+
+    def _act_think_end(self, st: GameState, seat: int) -> None:
+        think = st.vars["think"]
+        if not think or think["seat"] != seat:
+            raise IllegalAction("你没有在长考")
+        self._stop_thinking(st, seat)
+
+    def _stop_thinking(self, st: GameState, seat: int) -> None:
+        think = st.vars.get("think")
+        if think and think["seat"] == seat:
+            st.vars["think"] = None
+            if now() < think["until"]:
+                st.log(f"{P(seat)} 结束长考")
 
     # draw phase
     def _act_draw_discard(self, st, seat, card) -> None:
@@ -493,7 +570,15 @@ class CityExchange(Game):
         self._put_discard(st, seat, card)
         st.vars["last_discard"] = {"card": card, "by": seat}
         st.log(f"{P(seat)} 弃置 {self.card_name(st, card)}")
-        self._open_offer(st, seat, [card])
+        self._open_window(st, seat, [card])
+
+    def _open_window(self, st: GameState, by: int, cards: list[int]) -> None:
+        """Cards just put where they can be 点炮'd: only 点炮 for a moment."""
+        v = st.vars
+        v["window"] = {"by": by, "cards": list(cards), "zone": st.where(cards[0]), "thought": []}
+        v["hold_until"] = now() + DISCARD_WAIT
+        v["think"] = None
+        self._open_offer(st, by, cards)
 
     def _open_offer(self, st: GameState, by: int, cards: list[int]) -> None:
         """Let every player who could use ``cards`` claim 点炮, without pausing the game."""
@@ -552,7 +637,7 @@ class CityExchange(Game):
         st.vars["cash_count"][seat] += 1
         st.log(f"{P(seat)} 兑现 {pat.name}，获得 {pat.value} 元")
         if st.options["cash_dianpao"]:
-            self._open_offer(st, seat, cards)
+            self._open_window(st, seat, cards)
 
     # ------------------------------------------------------------------- misc
     def is_over(self, st: GameState) -> bool:
@@ -573,7 +658,36 @@ class CityExchange(Game):
                 p.pop("dianpao_choice", None)
             v["offers"] = []
             v["next_offer"] = 0
+        v.setdefault("window", None)
+        v.setdefault("hold_until", 0)
+        v.setdefault("think", None)
         return st
+
+    def view(self, st: GameState, seat: int | None) -> dict:
+        out = st.view(seat)
+        v = out["vars"]
+        # whether anybody can 点炮 is private (each player's own offers are in their prompt)
+        v.pop("offers")
+        v.pop("next_offer")
+        # times as seconds from now, so clocks need not agree
+        t = now()
+        think = st.vars.get("think")
+        out["hold"] = {
+            "left": max(0.0, st.vars.get("hold_until", 0) - t),
+            "think": {"seat": think["seat"], "left": think["until"] - t}
+            if think and think["until"] > t else None,
+            "can_think": self.can_think(st, seat),
+        }
+        v.pop("hold_until", None)
+        v.pop("think", None)
+        return out
+
+    def waiting(self, st: GameState, prompts: dict[int, dict]) -> list[int]:
+        # only the normal flow: a pending 点炮 must not show
+        return sorted(self._flow_prompts(st))
+
+    def ai_wait(self, st: GameState, seat: int, prompt: dict) -> float:
+        return 0.0 if prompt.get("claims") or prompt["type"] == "dianpao" else self.blocked_for(st, seat)
 
     def static_info(self) -> dict:
         return {
@@ -599,4 +713,5 @@ class CityExchange(Game):
             return f"弃置 {self.card_name(st, card)}" if isinstance(card, int) and card in st.cards else "付钱"
         if kind == "bid":
             return "当地主" if action.get("take") else "不当地主"
-        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "点炮响应", "give": "交牌"}.get(kind, str(kind))
+        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "点炮响应", "give": "交牌",
+                "think": "长考", "think_end": "结束长考"}.get(kind, str(kind))

@@ -98,7 +98,7 @@ class Server:
                 "my_seat": seat,
                 "view": game.view(room.state, seat) if room.state else None,
                 "prompt": prompts.get(seat) if seat is not None else None,
-                "waiting": sorted(prompts),
+                "waiting": game.waiting(room.state, prompts) if room.state else [],
                 "history_len": len(room.history),
             },
         }

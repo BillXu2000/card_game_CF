@@ -10,6 +10,7 @@ import {
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
+const THINK_SECONDS = 30;
 const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
 
 // keep the map fitted when the table changes size
@@ -22,6 +23,37 @@ const patternUi = { open: false, all: false };
 
 // UI state kept between renders (reset when the prompt changes)
 let ui = { key: null, mode: null, picked: new Set(), selected: null, claims: {} };
+
+// After a discard only 点炮 is allowed for a few seconds, longer while someone
+// 长考s.  The server sends the seconds left; they count down from when each
+// view arrived, the countdowns tick in place and the table is redrawn when one
+// runs out.
+const viewTime = new WeakMap();
+let holdTimer = null;
+let lastCtx = null;
+setInterval(() => {
+  for (const e of document.querySelectorAll(".c-countdown[data-until]")) {
+    e.textContent = Math.max(0, Math.ceil((+e.dataset.until - performance.now()) / 1000));
+  }
+}, 250);
+
+function holdInfo(view, me) {
+  if (!viewTime.has(view)) viewTime.set(view, performance.now());
+  const h = view.hold;
+  const at = viewTime.get(view);
+  const until = (left) => at + left * 1000;
+  const wait = h && until(h.left) > performance.now() ? until(h.left) : null;
+  const think = h?.think && until(h.think.left) > performance.now() ? { seat: h.think.seat, until: until(h.think.left) } : null;
+  // when non-点炮 moves are allowed again, for this player
+  const free = Math.max(wait ?? 0, think && think.seat !== me ? think.until : 0);
+  return { wait, think, blocked: free > performance.now(), free, canThink: !!h?.can_think && !(think && think.seat !== me) };
+}
+
+function countdown(until) {
+  const e = span("c-countdown", String(Math.ceil((until - performance.now()) / 1000)));
+  e.dataset.until = until;
+  return e;
+}
 
 export function render(el, ctx) {
   const { view, prompt } = ctx;
@@ -41,6 +73,13 @@ export function render(el, ctx) {
   const open = new Set((prompt?.claims ?? []).map((c) => c.offer));
   for (const id of Object.keys(ui.claims)) if (!open.has(+id)) delete ui.claims[id];
   const rerender = () => render(el, ctx);
+  const hold = holdInfo(view, me);
+  lastCtx = ctx;
+  clearTimeout(holdTimer);
+  const next = [hold.wait, hold.think?.until].filter((t) => t != null);
+  if (next.length) {
+    holdTimer = setTimeout(() => { if (lastCtx === ctx) rerender(); }, Math.min(...next) - performance.now() + 30);
+  }
   const name = (i) => ctx.seatName(i);
   const card = (id) => view.cards[id];
   const info = ctx.room.static;
@@ -67,7 +106,8 @@ export function render(el, ctx) {
     const box = div(`c-seat c-${pos}` + (v.turn === i && v.phase !== "over" ? " turn" : ""));
     const head = div("c-head");
     head.append(span("c-name", name(i)));
-    if (ctx.room.waiting.includes(i) && v.turn !== i) head.append(span("c-thinking", "思考中"));
+    if (hold.think?.seat === i) head.append(span("c-thinking", "长考中"));
+    else if (ctx.room.waiting.includes(i) && v.turn !== i) head.append(span("c-thinking", "思考中"));
     if (v.landlord != null) head.append(span("c-role " + (i === v.landlord ? "lord" : "farmer"), i === v.landlord ? "地主" : "农民"));
     head.append(span("c-money", `${v.money[i]} 元`));
     box.append(head);
@@ -108,11 +148,11 @@ export function render(el, ctx) {
       if (!ids.length) cards.append(span("c-empty", "空"));
       for (const id of ids) {
         const m = miniCard(card(id));
-        if (v.offers.some((o) => o.cards.includes(id)) || v.last_discard?.card === id) m.classList.add("hot");
+        if (v.window?.cards.includes(id) || v.last_discard?.card === id) m.classList.add("hot");
         if (ui.mode === "buyback" && prompt?.buyback.includes(id)) {
           m.classList.add("pick");
           m.title = "点击回购这张牌";
-          m.onclick = () => ctx.act({ type: "buyback", card: id });
+          m.onclick = () => { if (!holdInfo(view, me).blocked) ctx.act({ type: "buyback", card: id }); };
         } else if (ui.mode === "buy" && prompt?.buy?.cards.includes(id)) {
           m.classList.add("pick");
           if (ui.picked.has(id)) m.classList.add("picked");
@@ -168,6 +208,12 @@ export function render(el, ctx) {
   // ---- status line
   const status = div("status");
   status.textContent = statusText(ctx, v, prompt, name);
+  if (hold.think) {
+    status.append(span("c-hold", hold.think.seat === me ? " · 你在长考，还剩 " : ` · ${name(hold.think.seat)} 长考中，还剩 `),
+      countdown(hold.think.until), span("c-hold", " 秒"));
+  } else if (hold.wait) {
+    status.append(span("c-hold", " · 刚弃了牌，点炮时间 "), countdown(hold.wait), span("c-hold", " 秒"));
+  }
   felt.append(status);
 
   // ---- my hand and actions
@@ -201,7 +247,8 @@ export function render(el, ctx) {
       const ids = patternId ? cardsForPattern(info, patternId, handIds, card) : new Set();
       for (const c of hand.querySelectorAll(".card")) c.classList.toggle("hl", ids.has(+c.dataset.id));
     };
-    buildActions(actions, ctx, prompt, rerender, highlight);
+    thinkButtons(actions, ctx, hold);
+    buildActions(actions, ctx, prompt, rerender, highlight, hold.blocked);
     if (actions.childElementCount) bottom.append(actions);
   }
 
@@ -241,7 +288,21 @@ function statusText(ctx, v, prompt, name) {
   return `等待 ${name(v.turn)} 行动…`;
 }
 
-function buildActions(box, ctx, prompt, rerender, highlight) {
+// 长考 is offered to everybody but the discarder, able to 点炮 or not
+function thinkButtons(box, ctx, hold) {
+  if (hold.think?.seat === ctx.seat) {
+    const b = button("结束长考（", () => ctx.act({ type: "think_end" }), false, "ghost");
+    b.append(countdown(hold.think.until), " 秒）");
+    box.append(b);
+  } else if (hold.canThink) {
+    const b = button(`长考（${THINK_SECONDS} 秒）`, () => ctx.act({ type: "think" }), false, "ghost");
+    b.title = `${THINK_SECONDS} 秒内其他人只能点炮，直到你点炮或结束长考`;
+    box.append(b);
+  }
+}
+
+// while only 点炮 is allowed (``blocked``), every other move is greyed out
+function buildActions(box, ctx, prompt, rerender, highlight, blocked) {
   if (!prompt) return;
   const act = ctx.act;
   const hoverable = (b, pattern) => {
@@ -268,38 +329,38 @@ function buildActions(box, ctx, prompt, rerender, highlight) {
     box.append(row);
   }
   if (prompt.type === "draw") {
-    box.append(button("弃置所选", () => act({ type: "discard", card: ui.selected }), ui.selected == null));
+    box.append(button("弃置所选", () => act({ type: "discard", card: ui.selected }), ui.selected == null || blocked));
     for (const o of prompt.cash) {
-      const b = button(`不弃，直接兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), false, "gold");
+      const b = button(`不弃，直接兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), blocked, "gold");
       hoverable(b, o.pattern);
       box.append(b);
     }
   } else if (prompt.type === "main") {
     for (const o of prompt.cash) {
-      const b = button(`兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), false, "gold");
+      const b = button(`兑现 ${o.name} +${o.value}`, () => act({ type: "cash", pattern: o.pattern }), blocked, "gold");
       hoverable(b, o.pattern);
       box.append(b);
     }
     if (prompt.buyback.length) box.append(modeButton("回购（−10）", "buyback", rerender));
     if (prompt.buy) box.append(modeButton(`强买（−${prompt.buy.price}/张）`, "buy", rerender));
     if (ui.mode === "buy")
-      box.append(button(`确认强买 ${ui.picked.size} 张`, () => act({ type: "buy", cards: [...ui.picked] }), !ui.picked.size));
+      box.append(button(`确认强买 ${ui.picked.size} 张`, () => act({ type: "buy", cards: [...ui.picked] }), !ui.picked.size || blocked));
     if (prompt.tour) box.append(button("出游（周游列国）", () => {
       if (confirm("发动周游列国？其他人依次弃一张牌，第一个不弃的人付你 6 元。")) act({ type: "tour" });
-    }));
-    box.append(button("结束回合", () => act({ type: "end" }), false, "ghost"));
+    }, blocked));
+    box.append(button("结束回合", () => act({ type: "end" }), blocked, "ghost"));
     if (ui.mode) box.append(span("c-hint", ui.mode === "buy"
       ? `点击桌上弃牌区里要买的牌（黄色虚线框，最多 ${prompt.buy.max} 张），钱付给弃这张牌的人`
       : "点击你弃牌区里要收回的牌（黄色虚线框）"));
   } else if (prompt.type === "tour") {
-    box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null));
+    box.append(button("弃置所选", () => act({ type: "tour", card: ui.selected }), ui.selected == null || blocked));
     box.append(button(prompt.by === ctx.seat ? "不弃，结束周游列国" : `不弃，付 ${prompt.fine} 元`,
-      () => act({ type: "tour", card: null }), false, "ghost"));
+      () => act({ type: "tour", card: null }), blocked, "ghost"));
   } else if (prompt.type === "bid") {
-    box.append(button("当地主", () => act({ type: "bid", take: true })));
-    box.append(button("不当", () => act({ type: "bid", take: false }), false, "ghost"));
+    box.append(button("当地主", () => act({ type: "bid", take: true }), blocked));
+    box.append(button("不当", () => act({ type: "bid", take: false }), blocked, "ghost"));
   } else if (prompt.type === "give") {
-    box.append(button(`交给 ${ctx.seatName(prompt.to)}`, () => act({ type: "give", card: ui.selected }), ui.selected == null));
+    box.append(button(`交给 ${ctx.seatName(prompt.to)}`, () => act({ type: "give", card: ui.selected }), ui.selected == null || blocked));
   }
 }
 
