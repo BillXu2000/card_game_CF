@@ -324,8 +324,10 @@ function buildActions(box, ctx, prompt, rerender, highlight, blocked) {
       hoverable(b, o.pattern);
       row.append(b);
     });
-    row.append(button("兑现所选", () => act({ type: "dianpao", offer: claim.offer, choices: [...sel] }), !sel.size));
-    row.append(button("不点", () => act({ type: "dianpao", offer: claim.offer, choices: [] }), false, "ghost"));
+    // after a 点炮 the options are worked out afresh: start the next pick empty
+    row.append(button("兑现所选", () => { act({ type: "dianpao", offer: claim.offer, choices: [...sel] }); sel.clear(); },
+      !sel.size));
+    row.append(button("不点炮", () => act({ type: "dianpao", offer: claim.offer, choices: [] }), false, "ghost"));
     box.append(row);
   }
   if (prompt.type === "draw") {

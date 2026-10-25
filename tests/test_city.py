@@ -503,3 +503,29 @@ def test_who_can_dianpao_is_not_shown(clock):
     assert G.prompts(st).keys() == {0, 1}
     assert G.waiting(st, G.prompts(st)) == [0]
     assert st.vars["offers"] and "offers" not in G.view(st, 2)["vars"]
+
+
+def test_dianpao_again_with_the_same_card_until_declined():
+    # one 成都 completes 成都重庆 with each of three 重庆
+    st = setup(hands={0: ["成都"], 1: ["重庆", "重庆", "重庆"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    G.act(st, 0, {"type": "discard", "card": st.zone("hand:0").cards[0]})
+    for k in range(2):
+        claim = G.prompts(st)[1]["claims"][0]
+        assert [o["pattern"] for o in claim["options"]] == ["pair:成都重庆"]
+        G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
+    assert cities(st, "hand:1") == ["重庆"] and st.vars["money"][1] == 2 * 4
+    claim = G.prompts(st)[1]["claims"][0]
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": []})   # 不点炮
+    assert 1 not in G.prompts(st) and st.vars["offers"] == []
+
+
+def test_dianpao_offer_closes_when_nothing_is_left_to_claim():
+    st = setup(hands={0: ["成都"], 1: ["重庆"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    G.act(st, 0, {"type": "discard", "card": st.zone("hand:0").cards[0]})
+    claim = G.prompts(st)[1]["claims"][0]
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
+    assert 1 not in G.prompts(st) and st.vars["offers"] == []

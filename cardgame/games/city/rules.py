@@ -5,7 +5,9 @@ instead), then in any order: buy back (≤1), tour (周游列国), forced buy
 (强买, ≤1), cash a Pattern (≤1), end the turn.  Every discard gives the
 players who could use it a 点炮 offer.  Offers do not block the game: the
 player whose turn it is keeps playing while others claim or decline, and
-offers lapse when the turn ends or the card leaves the discard pile.
+offers lapse when the turn ends or the card leaves the discard pile.  A
+player may 点炮 the same offer again and again (one 成都 can complete
+成都重庆 with each 重庆 in hand) until they decline or nothing is left to claim.
 
 So that 点炮 is not a race, every discard is followed by DISCARD_WAIT
 seconds in which nobody may do anything but 点炮.  Any player other than the
@@ -625,8 +627,11 @@ class CityExchange(Game):
             st.vars["dianpao_count"][by] += 1
             st.log(f"{P(by)} 点炮：{P(seat)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
                    f"{P(seat)} +{pat.value * 2 // 3}，" + (f"{P(by)} -{cost}" if cost else "弃牌者不扣钱"))
-        offer["answered"].append(seat)
-        if set(offer["answered"]) >= set(offer["eligible"]):
+        # after a 点炮 the player may go again (the same card can complete
+        # another Pattern with other hand cards) until they decline or can't
+        if not choices:
+            offer["answered"].append(seat)
+        if all(i in offer["answered"] or not self._dianpao_options(st, i, offer) for i in offer["eligible"]):
             st.vars["offers"].remove(offer)
 
     def _cash(self, st: GameState, seat: int, pat: Pattern, prefer=()) -> None:
