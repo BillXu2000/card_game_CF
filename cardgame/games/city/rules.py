@@ -16,6 +16,9 @@ discard: for up to THINK_TIME seconds the others may only 点炮, until the
 thinker claims, declines, acts otherwise or ends the 长考.  Who can 点炮 is
 never shown to the other players.
 
+For the table, ``vars.played`` keeps the cards each player put out since
+their turn began and ``vars.events`` this turn's money changes.
+
 Points the rule book leaves open are room options (see ``option_specs``).
 """
 from __future__ import annotations
@@ -139,6 +142,9 @@ class CityExchange(Game):
             dianpao_count=[0] * n,
             winners=None,
             last_discard=None,
+            played=[[] for _ in range(n)],  # per seat: cards put out since their turn began, see _played
+            events=[],        # this turn's cash, 点炮, buys and fines with their money changes [[seat, amount]]
+
             landlord=None,
             discard_of=[f"discard:{i}" for i in range(n)],
             special_of=[f"special:{i}" for i in range(n)],
@@ -268,6 +274,8 @@ class CityExchange(Game):
     def _begin_turn(self, st: GameState, seat: int) -> None:
         v = st.vars
         v.update(turn=seat, turn_no=v["turn_no"] + 1, used={"buyback": False, "buy": False, "cash": False})
+        v["played"][seat] = []
+        v["events"] = []
         n_draw = LANDLORD_DRAW if seat == v.get("landlord") else DRAW
         drawn = st.draw("deck", f"hand:{seat}", n_draw)
         st.private[seat]["drawn"] = drawn
@@ -498,7 +506,8 @@ class CityExchange(Game):
         st.set_prop(card, "by", None)
         st.move(card, f"hand:{seat}")
         st.reveal(card, range(st.num_players))
-        st.log(f"{P(seat)} 花 {BUYBACK_COST} 元回购了 {self.card_name(st, card)}")
+        st.vars["events"].append({"type": "buyback", "seat": seat, "card": card, "money": [[seat, -BUYBACK_COST]]})
+        st.log(f"{P(seat)} 回购 {self.card_name(st, card)}，-{BUYBACK_COST} 元")
 
     def _act_buy(self, st, seat, action) -> None:
         cards = action.get("cards")
@@ -517,7 +526,14 @@ class CityExchange(Game):
             st.set_prop(c, "by", None)
             st.move(c, f"hand:{seat}")
             st.reveal(c, range(st.num_players))
-            st.log(f"{P(seat)} 强买了 {P(owner)} 的 {self.card_name(st, c)}，付 {price} 元")
+            name = self.card_name(st, c)
+            if owner == seat:
+                st.vars["events"].append({"type": "buy", "seat": seat, "from": owner, "card": c, "money": []})
+                st.log(f"{P(seat)} 强买自己的 {name}（钱付给自己）")
+            else:
+                st.vars["events"].append({"type": "buy", "seat": seat, "from": owner, "card": c,
+                                          "money": [[seat, -price], [owner, price]]})
+                st.log(f"{P(seat)} 强买 {P(owner)} 的 {name}：{P(seat)} -{price} 元，{P(owner)} +{price} 元")
 
     def _act_tour(self, st, seat, action) -> None:
         cards = self.unused(st, seat, "tour")
@@ -545,7 +561,9 @@ class CityExchange(Game):
                 st.log(f"{P(seat)} 不弃牌（付给自己），周游列国结束")
             else:
                 self._pay(st, seat, t["by"], TOUR_FINE)
-                st.log(f"{P(seat)} 不弃牌，交给 {P(t['by'])} {TOUR_FINE} 元")
+                v["events"].append({"type": "fine", "seat": seat, "to": t["by"],
+                                    "money": [[seat, -TOUR_FINE], [t["by"], TOUR_FINE]]})
+                st.log(f"{P(seat)} 不弃牌：{P(seat)} -{TOUR_FINE} 元，{P(t['by'])} +{TOUR_FINE} 元")
             v["tour"] = None
             v["phase"] = "main"
             return
@@ -559,7 +577,7 @@ class CityExchange(Game):
                 v["tour"] = None
                 v["phase"] = "main"
                 st.log("所有人都弃了牌，周游列国结束")
-        self._discard(st, seat, card)
+        self._discard(st, seat, card, "tour")
 
     # ------------------------------------------------------ discard & claims
     def _put_discard(self, st: GameState, seat: int, card: int) -> None:
@@ -568,9 +586,14 @@ class CityExchange(Game):
         if st.zone(zone).owner is None:
             st.set_prop(card, "by", seat)
 
-    def _discard(self, st: GameState, seat: int, card: int) -> None:
+    def _played(self, st: GameState, seat: int, group: dict) -> None:
+        """Show cards ``seat`` put out on the table until their next turn begins."""
+        st.vars["played"][seat].append(group)
+
+    def _discard(self, st: GameState, seat: int, card: int, kind: str = "discard") -> None:
         self._put_discard(st, seat, card)
         st.vars["last_discard"] = {"card": card, "by": seat}
+        self._played(st, seat, {"type": kind, "cards": [card]})
         st.log(f"{P(seat)} 弃置 {self.card_name(st, card)}")
         self._open_window(st, seat, [card])
 
@@ -618,15 +641,21 @@ class CityExchange(Game):
             raise IllegalAction("已经不能点炮了")
         by = offer["by"]
         for o, need in self._choice_allocation(st, seat, offer, choices):
-            for c in self._allocate(st, seat, need):
+            cards = self._allocate(st, seat, need)
+            for c in cards:
                 self._put_discard(st, seat, c)
             pat = PATTERN_BY_ID[o["pattern"]]
             cost = self._dianpao_cost(st, pat)
+            gain = pat.value * 2 // 3
             self._pay(st, by, None, cost)
-            self._pay(st, None, seat, pat.value * 2 // 3)
+            self._pay(st, None, seat, gain)
             st.vars["dianpao_count"][by] += 1
-            st.log(f"{P(by)} 点炮：{P(seat)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
-                   f"{P(seat)} +{pat.value * 2 // 3}，" + (f"{P(by)} -{cost}" if cost else "弃牌者不扣钱"))
+            self._played(st, seat, {"type": "dianpao", "cards": cards, "card": o["card"], "from": by,
+                                    "pattern": pat.id})
+            st.vars["events"].append({"type": "dianpao", "seat": seat, "from": by, "card": o["card"],
+                                      "pattern": pat.id, "money": [[seat, gain]] + ([[by, -cost]] if cost else [])})
+            st.log(f"{P(seat)} 点炮 {P(by)} 的 {self.card_name(st, o['card'])}，兑现 {pat.name}：{P(seat)} +{gain} 元，"
+                   + (f"{P(by)} -{cost} 元" if cost else "弃牌者不扣钱"))
         # after a 点炮 the player may go again (the same card can complete
         # another Pattern with other hand cards) until they decline or can't
         if not choices:
@@ -640,7 +669,9 @@ class CityExchange(Game):
             self._put_discard(st, seat, c)
         self._pay(st, None, seat, pat.value)
         st.vars["cash_count"][seat] += 1
-        st.log(f"{P(seat)} 兑现 {pat.name}，获得 {pat.value} 元")
+        self._played(st, seat, {"type": "cash", "cards": cards, "pattern": pat.id})
+        st.vars["events"].append({"type": "cash", "seat": seat, "pattern": pat.id, "money": [[seat, pat.value]]})
+        st.log(f"{P(seat)} 兑现 {pat.name}，+{pat.value} 元")
         if st.options["cash_dianpao"]:
             self._open_window(st, seat, cards)
 
@@ -666,6 +697,8 @@ class CityExchange(Game):
         v.setdefault("window", None)
         v.setdefault("hold_until", 0)
         v.setdefault("think", None)
+        v.setdefault("played", [[] for _ in range(st.num_players)])
+        v.setdefault("events", [])
         return st
 
     def view(self, st: GameState, seat: int | None) -> dict:

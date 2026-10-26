@@ -107,7 +107,6 @@ export function mapLegend() {
   if (!legendBox) {
     legendBox = document.createElement("details");
     legendBox.className = "cm-legend-box";
-    legendBox.open = window.innerWidth > 860;  // collapsed on phones
     legendBox.innerHTML = "<summary>图例</summary><div class='cm-legend-body muted'>地图加载中…</div>";
   }
   return legendBox;

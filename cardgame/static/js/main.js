@@ -385,6 +385,7 @@ async function renderGame(r) {
   const el = $("game");
   const mod = await rendererFor(r.game);
   if (app.room !== r) return;  // a newer update arrived while loading
+  el.parentElement.classList.remove("fit");  // a renderer may make the table fill the window
   if (!r.view) {
     el.className = "game";
     el.innerHTML = `<div class="waiting-msg">${r.is_host ? "坐满（空座位可设为 AI）后点击“开始游戏”。" : "等待房主开始游戏…"}</div>`;

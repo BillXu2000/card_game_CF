@@ -529,3 +529,28 @@ def test_dianpao_offer_closes_when_nothing_is_left_to_claim():
     claim = G.prompts(st)[1]["claims"][0]
     G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
     assert 1 not in G.prompts(st) and st.vars["offers"] == []
+
+
+def test_played_cards_stay_on_the_table_until_the_next_turn():
+    st = setup(hands={0: ["北京", "成都", "重庆"], 1: ["天津"]})
+    beijing, chengdu, chongqing = st.zone("hand:0").cards
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = [beijing]
+    G.act(st, 0, {"type": "discard", "card": beijing})
+    claim = G.prompts(st)[1]["claims"][0]
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
+    G.act(st, 0, {"type": "cash", "pattern": "pair:成都重庆"})
+    v = st.vars
+    assert v["played"][0] == [{"type": "discard", "cards": [beijing]},
+                              {"type": "cash", "cards": [chengdu, chongqing], "pattern": "pair:成都重庆"}]
+    assert v["played"][1] == [{"type": "dianpao", "cards": st.zone("discard:1").cards, "card": beijing,
+                               "from": 0, "pattern": "pair:北京天津"}]
+    assert [(e["type"], e["money"]) for e in v["events"]] == [("dianpao", [[1, 4], [0, -2]]), ("cash", [[0, 6]])]
+    G.act(st, 0, {"type": "end"})
+    # a new turn: its events start afresh, the new player's cards leave the table
+    assert v["events"] == [] and v["played"][1] == [] and len(v["played"][0]) == 2
+    for seat in (1, 2):
+        G.act(st, seat, {"type": "discard", "card": st.private[seat]["drawn"][0]})
+        decline_offers(st)
+        G.act(st, seat, {"type": "end"})
+    assert v["turn"] == 0 and v["played"][0] == [] and len(v["played"][1]) == 1

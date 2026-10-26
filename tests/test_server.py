@@ -221,3 +221,24 @@ async def test_room_chat(tmp_path):
         assert m["reset"] and [e["text"] for e in m["items"]] == ["你好"]
     finally:
         await client.close()
+
+
+async def test_city_ai_waits_after_its_own_discard(tmp_path):
+    from cardgame.server.rooms import RoomManager
+    from cardgame.server.storage import Storage
+    from cardgame.games.city.rules import DISCARD_WAIT
+    from tests.test_city import setup as city_state
+
+    R = RoomManager(Storage(tmp_path), ai_speed=0)
+    room = R.create("u", "city", 3)
+    for i in range(3):
+        R.set_seat("u", room.code, i, "ai")
+    scheduled = []
+    R._run_ai = lambda room, seat, seq, delay: (scheduled.append((seat, delay)), asyncio.sleep(0))[1]
+    room.state = st = city_state(hands={0: ["北京"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = st.zone("hand:0").cards[:1]
+    R.act(room, 0, {"type": "discard", "card": st.private[0]["drawn"][0]}, "小明")
+    # even at full AI speed the discarder's next move (ending the turn) waits
+    seat, delay = scheduled[-1]
+    assert seat == 0 and delay >= DISCARD_WAIT

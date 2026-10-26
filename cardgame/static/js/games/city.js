@@ -1,8 +1,9 @@
-// 城市交易所 table.  The table top is a map of China with every city of the
-// game; the other players sit along the top edge with their money, card
-// backs, special cards and discard piles, the legend is on the left, the deck
-// and the card just discarded on the right (over the sea), and your hand at
-// the bottom.
+// 城市交易所 table, laid out like a card table: the map of China is only the
+// cloth.  The other players sit round the edge (left, top, right), you at the
+// bottom; the cards each player put out since their turn began lie on the
+// table in front of them.  The middle shows whose turn it is, this turn's
+// cash / 点炮 / money changes, the deck and the discards.  The log, map legend
+// and Pattern reference are in a column on the right.
 import { pileEl } from "../cards.js";
 import {
   dropRedrawnHovers, fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
@@ -12,6 +13,7 @@ const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-h
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
 const THINK_SECONDS = 30;
 const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
+const MONEY_FX_MS = 4000;   // how long a money change stays marked at the player
 
 // keep the map fitted when the table changes size
 let fitTarget = null;
@@ -55,6 +57,25 @@ function countdown(until) {
   return e;
 }
 
+// Money changes are found by comparing each new view with the previous one;
+// the change is shown next to the player's money for a few seconds (repeated
+// changes add up).
+const moneyFx = { code: null, view: null, money: null, fx: {} };
+function trackMoney(ctx) {
+  const money = ctx.view.vars.money;
+  if (moneyFx.view === ctx.view) return;
+  const t = performance.now();
+  if (moneyFx.code === ctx.room.code && moneyFx.money?.length === money.length) {
+    money.forEach((m, i) => {
+      const d = m - moneyFx.money[i];
+      if (!d) return;
+      const old = moneyFx.fx[i];
+      moneyFx.fx[i] = { delta: d + (old && t - old.at < MONEY_FX_MS ? old.delta : 0), at: t };
+    });
+  } else moneyFx.fx = {};
+  Object.assign(moneyFx, { code: ctx.room.code, view: ctx.view, money: [...money] });
+}
+
 export function render(el, ctx) {
   const { view, prompt } = ctx;
   const v = view.vars;
@@ -80,60 +101,79 @@ export function render(el, ctx) {
   if (next.length) {
     holdTimer = setTimeout(() => { if (lastCtx === ctx) rerender(); }, Math.min(...next) - performance.now() + 30);
   }
+  trackMoney(ctx);
   const name = (i) => ctx.seatName(i);
   const card = (id) => view.cards[id];
   const info = ctx.room.static;
   const cityOrder = Object.values(info.provinces).flat();
+  const patternOf = Object.fromEntries(info.patterns.map((p) => [p.id, p]));
+  const inDiscards = new Set([...new Set(v.discard_of)].flatMap((z) => view.zones[z].cards));
+
+  const nameTag = (i) => span("c-who", name(i));
+  const patTag = (p) => {
+    const t = span("c-pat", p?.name ?? "?");
+    if (p) {
+      t.onmouseenter = () => hoverPattern(p.id);
+      t.onmouseleave = () => hoverPattern(null);
+    }
+    return t;
+  };
 
   dropRedrawnHovers();
   el.className = "game city";
   el.innerHTML = "";
   const felt = div(`city-table n${n}`);
   el.append(felt);
+  // on a wide screen the table fills the window below the room header
+  el.parentElement?.classList.add("fit");
+  el.parentElement?.style.setProperty("--fit-top", `${Math.max(0, el.getBoundingClientRect().top + scrollY)}px`);
   const held = new Set(me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : []);
   felt.append(mapBackground(info, held));
   tableEl = el;
+  const surface = div("c-surface");   // the table top; the map is fitted to it
+  const side = div("c-side");         // log, legend, Pattern reference
+  felt.append(surface, side);
 
-  // ---- other players along the top edge
+  // ---- the other players round the table
   const base = me ?? 0;
   const pileShownBy = {};
-  const mySeatBox = seatBox(base, "bottom");  // goes above my hand
-  const top = div("c-top");
-  for (let k = 1; k < n; k++) top.append(seatBox((base + k) % n, POS[n][k]));
-  felt.append(top);
+  for (let k = 1; k < n; k++) {
+    const i = (base + k) % n;
+    const pod = div(`c-pod c-${POS[n][k]}`);
+    pod.append(seatBox(i), playedEl(i));
+    surface.append(pod);
+  }
 
-  function seatBox(i, pos) {
-    const box = div(`c-seat c-${pos}` + (v.turn === i && v.phase !== "over" ? " turn" : ""));
+  function seatBox(i) {
+    const box = div("c-seat" + (v.turn === i && v.phase !== "over" ? " turn" : ""));
     const head = div("c-head");
     head.append(span("c-name", name(i)));
     if (hold.think?.seat === i) head.append(span("c-thinking", "长考中"));
     else if (ctx.room.waiting.includes(i) && v.turn !== i) head.append(span("c-thinking", "思考中"));
+    if (v.turn === i && v.phase !== "over") head.append(span("c-turn-tag", "回合中"));
     if (v.landlord != null) head.append(span("c-role " + (i === v.landlord ? "lord" : "farmer"), i === v.landlord ? "地主" : "农民"));
-    head.append(span("c-money", `${v.money[i]} 元`));
+    head.append(moneyEl(i));
     box.append(head);
 
-    // other players' hands: card backs, plus cards everybody saw them take
+    // other players' hands: card backs, plus cards everybody saw them take;
+    // then the special cards
+    const row = div("c-row");
     if (i !== me) {
-      const row = div("c-row");
       const hand = div("c-backs");
       const ids = view.zones[`hand:${i}`].cards;
       for (const id of ids) hand.append(id == null ? back() : miniCard(card(id), "known"));
       row.append(hand, span("c-count", ids.length ? `${ids.length} 张` : "无手牌"));
-      box.append(row);
     }
-
-    // special cards
-    const specials = div("c-specials");
     const spZone = view.zones[v.special_of[i]];
-    if (spZone.owner == null && spZone.cards.length) specials.append(span("c-label", "共用"));
+    if (spZone.owner == null && spZone.cards.length) row.append(span("c-label", "共用"));
     for (const id of spZone.cards) {
       const c = card(id);
       const s = div(`c-sp ${c.kind}` + (c.used ? " used" : ""));
       s.textContent = c.kind === "tour" ? "周游列国" : "强买";
       s.title = c.used ? "已使用（翻面）" : "可以使用";
-      specials.append(s);
+      row.append(s);
     }
-    box.append(specials);
+    box.append(row);
 
     // discard pile
     const zone = v.discard_of[i];
@@ -142,10 +182,9 @@ export function render(el, ctx) {
       pile.append(span("c-label", `与 ${name(pileShownBy[zone])} 共用弃牌区`));
     } else {
       pileShownBy[zone] = i;
-      pile.append(span("c-label", view.zones[zone].owner == null ? "共用弃牌区" : "弃牌区"));
-      const cards = div("c-pile-cards");
       const ids = view.zones[zone].cards;
-      if (!ids.length) cards.append(span("c-empty", "空"));
+      pile.append(span("c-label", (view.zones[zone].owner == null ? "共用弃牌区" : "弃牌区") + ` ${ids.length} 张`));
+      const cards = div("c-pile-cards");
       for (const id of ids) {
         const m = miniCard(card(id));
         if (v.window?.cards.includes(id) || v.last_discard?.card === id) m.classList.add("hot");
@@ -166,46 +205,62 @@ export function render(el, ctx) {
         }
         cards.append(m);
       }
-      pile.append(cards);
+      if (ids.length) pile.append(cards);
     }
     box.append(pile);
     return box;
   }
 
-  // ---- centre: deck, the card in play, whose turn
-  const centre = div("c-centre");
-  const piles = div("c-piles");
-  piles.append(pileEl({ label: "牌堆", count: view.zones.deck.cards.length }));
-  const discard = div("c-discard");
-  const last = v.last_discard;
-  const lastShown = last && view.cards[last.card] && view.zones[v.discard_of[last.by]].cards.includes(last.card);
-  discard.append(discardPile(info, view, v, card, lastShown ? bigCard(card(last.card)) : null));
-  if (lastShown) discard.append(span("c-label c-last", `${name(last.by)} 最近弃置`));
-  piles.append(discard);
-  centre.append(piles);
-  if (v.phase === "bid") {
-    const focus = div("c-focus");
-    focus.append(span("c-label", "翻开的牌"));
-    const row = div("c-row");
-    for (const id of view.zones.bonus.cards) row.append(bigCard(card(id)));
-    focus.append(row);
-    centre.append(focus);
+  function moneyEl(i) {
+    const m = span("c-money", `${v.money[i]} 元`);
+    const fx = moneyFx.fx[i];
+    const age = fx ? performance.now() - fx.at : Infinity;
+    if (age < MONEY_FX_MS) {
+      const d = span(`c-delta ${fx.delta > 0 ? "up" : "down"}`, signed(fx.delta));
+      // a redraw must not restart the animation
+      d.style.animationDelay = m.style.animationDelay = `${-age}ms`;
+      m.classList.add(fx.delta > 0 ? "up" : "down");
+      m.append(d);
+    }
+    return m;
   }
-  const turnInfo = span("c-turn", v.phase === "over" ? "游戏结束"
-    : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "");
+
+  // cards put out since the player's turn began, in groups (a discard, a
+  // cashed Pattern, a 点炮 ...)
+  function playedEl(i) {
+    const box = div("c-played");
+    for (const g of v.played?.[i] ?? []) {
+      const grp = div(`c-group ${g.type}`);
+      const label = div("c-group-label");
+      const pat = patternOf[g.pattern];
+      if (g.type === "discard") label.append("弃置");
+      else if (g.type === "tour") label.append("周游列国 · 弃置");
+      else if (g.type === "cash") label.append("兑现 ", patTag(pat), " ", moneyTag(pat.value));
+      else if (g.type === "dianpao") label.append("点炮 ", nameTag(g.from), " · ", patTag(pat), " ", moneyTag(Math.floor(pat.value * 2 / 3)));
+      grp.append(label);
+      const cards = div("c-group-cards");
+      const ids = g.type === "dianpao" ? [g.card, ...g.cards] : g.cards;
+      for (const id of ids) {
+        if (!card(id)) { cards.append(back()); continue; }
+        const c = bigCard(card(id));
+        c.classList.add("mid");
+        if (id === g.card) { c.classList.add("claimed"); c.title += `\n${name(g.from)} 弃的牌`; }
+        if (!inDiscards.has(id)) { c.classList.add("gone"); c.title += "\n已被拿走"; }
+        else if (v.window?.cards.includes(id)) c.classList.add("hot");
+        cards.append(c);
+      }
+      grp.append(cards);
+      box.append(grp);
+    }
+    return box;
+  }
+
+  // ---- the middle of the table
+  const centre = div("c-centre");
+  const turnInfo = div("c-turn");
+  turnInfo.textContent = v.phase === "over" ? "游戏结束"
+    : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "";
   centre.append(turnInfo);
-
-  // ---- middle band: legend | the map shows through | deck and card in play
-  const mid = div("c-mid");
-  const legendSlot = div("c-legend-slot");
-  legendSlot.append(mapLegend());
-  const area = div("c-area");
-  const right = div("c-right");   // deck, card in play, and what the map is showing
-  right.append(centre, mapCaption());
-  mid.append(legendSlot, area, right);
-  felt.append(mid);
-
-  // ---- status line
   const status = div("status");
   status.textContent = statusText(ctx, v, prompt, name);
   if (hold.think) {
@@ -214,12 +269,51 @@ export function render(el, ctx) {
   } else if (hold.wait) {
     status.append(span("c-hold", " · 刚弃了牌，点炮时间 "), countdown(hold.wait), span("c-hold", " 秒"));
   }
-  felt.append(status);
+  centre.append(status);
+  const events = v.events ?? [];
+  if (events.length) {
+    const box = div("c-events");
+    events.forEach((e, k) => box.append(eventEl(e, k === events.length - 1)));
+    centre.append(box);
+  }
+  if (v.phase === "bid") {
+    const focus = div("c-focus");
+    focus.append(span("c-label", "翻开的牌（归地主）"));
+    const row = div("c-row");
+    for (const id of view.zones.bonus.cards) row.append(bigCard(card(id)));
+    focus.append(row);
+    centre.append(focus);
+  }
+  const piles = div("c-piles");
+  piles.append(pileEl({ label: "牌堆", count: view.zones.deck.cards.length }));
+  const last = v.last_discard;
+  const lastShown = last && view.cards[last.card] && inDiscards.has(last.card);
+  piles.append(discardPile(info, view, v, card, lastShown ? bigCard(card(last.card)) : null));
+  centre.append(piles);
+  surface.append(centre);
 
-  // ---- my hand and actions
-  const bottom = div("bottom c-mine");
-  bottom.append(mySeatBox);
-  felt.append(bottom);
+  function eventEl(e, latest) {
+    const d = div(`c-event ${e.type}` + (latest ? " latest" : ""));
+    const pat = patternOf[e.pattern];
+    const city = (id) => span("c-city", card(id)?.city ?? "?");
+    if (e.type === "cash") d.append(nameTag(e.seat), " 兑现 ", patTag(pat));
+    else if (e.type === "dianpao") d.append(nameTag(e.seat), " 点炮 ", nameTag(e.from), " 的 ", city(e.card), "：", patTag(pat));
+    else if (e.type === "buy") d.append(nameTag(e.seat), " 强买 ", nameTag(e.from), " 的 ", city(e.card));
+    else if (e.type === "buyback") d.append(nameTag(e.seat), " 回购 ", city(e.card));
+    else if (e.type === "fine") d.append(nameTag(e.seat), " 不弃牌，付钱给 ", nameTag(e.to));
+    const money = span("c-event-money", "");
+    for (const [s, a] of e.money) money.append(" ", nameTag(s), " ", moneyTag(a));
+    if (e.money.length) d.append(money);
+    return d;
+  }
+
+  // ---- me: seat, the cards I put out, hand and actions
+  const mine = div("c-mine");
+  mine.append(seatBox(base));
+  const col = div("c-mine-col");
+  col.append(playedEl(base));
+  mine.append(col);
+  surface.append(mine);
   if (me != null) {
     const hand = div("my-hand c-hand");
     const handIds = view.zones[`hand:${me}`].cards;
@@ -240,7 +334,7 @@ export function render(el, ctx) {
       hand.append(c);
     }
     if (!handIds.length) hand.append(span("c-empty", "没有手牌"));
-    bottom.append(hand);
+    col.append(hand);
     const actions = div("c-actions");
     // hovering a Pattern button lifts the hand cards it would use
     const highlight = (patternId) => {
@@ -249,21 +343,34 @@ export function render(el, ctx) {
     };
     thinkButtons(actions, ctx, hold);
     buildActions(actions, ctx, prompt, rerender, highlight, hold.blocked);
-    if (actions.childElementCount) bottom.append(actions);
+    if (actions.childElementCount) col.append(actions);
   }
 
-  if (v.phase === "over") felt.append(finalBox(v, name));
+  if (v.phase === "over") surface.append(finalBox(v, name));
+
+  // ---- right column: legend and Pattern reference (they open over the
+  // table), what the map is showing, the log
+  const tools = div("c-tools");
+  const legend = mapLegend();
+  const patterns = patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender);
+  // one of them open at a time
+  legend.ontoggle = () => { if (legend.open && patterns.open) patterns.open = false; };
+  patterns.addEventListener("toggle", () => { if (patterns.open && legend.open) legend.open = false; });
+  tools.append(legend, patterns);
+  side.append(tools, mapCaption(), logPanel(view.log, name, info.patterns));
 
   fadeOtherCities(focusCities());  // something may still be hovered after a re-render
-  fitTarget = [felt, area];
+  fitTarget = [felt, surface];
   if (resizer) { resizer.disconnect(); resizer.observe(felt); }
-  requestAnimationFrame(() => fitMap(felt, area));
+  requestAnimationFrame(() => fitMap(felt, surface));
+}
 
-  // ---- reference + log under the table
-  const below = div("c-below");
-  below.append(patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender));
-  below.append(logPanel(view.log, name));
-  el.append(below);
+function signed(a) {
+  return (a > 0 ? "+" : "−") + Math.abs(a);
+}
+
+function moneyTag(a) {
+  return span(a >= 0 ? "c-plus" : "c-minus", `${signed(a)} 元`);
 }
 
 function statusText(ctx, v, prompt, name) {
@@ -410,7 +517,7 @@ function discardPile(info, view, v, card, top) {
       total++;
     }
   }
-  return pileEl({ label: "弃牌堆", count: total, rows: cityRows(info, seen), top, title: "弃牌区里的牌", pop: "left" });
+  return pileEl({ label: "弃牌堆", count: total, rows: cityRows(info, seen), top, title: "弃牌区里的牌", pop: "right" });
 }
 
 function finalBox(v, name) {
@@ -438,10 +545,12 @@ function patternPanel(info, myCities, rerender) {
   const have = {};
   for (const c of myCities) have[c] = (have[c] ?? 0) + 1;
   const det = document.createElement("details");
-  det.className = "panel c-patterns";
+  det.className = "c-patterns";
   det.open = patternUi.open;
-  det.ontoggle = () => { patternUi.open = det.open; };
-  det.innerHTML = "<summary>Pattern 速查（按还差几张排序）</summary>";
+  det.addEventListener("toggle", () => { patternUi.open = det.open; });
+  det.innerHTML = "<summary>Pattern 速查</summary>";
+  const body = div("c-pop");
+  body.append(span("c-pop-title", "按还差几张排序"));
   // 四个X (four of one city) are left out: they are obvious from the hand
   const rows = info.patterns.filter((p) => !p.id.startsWith("four:")).map((p) => {
     let missing = 0;
@@ -463,23 +572,39 @@ function patternPanel(info, myCities, rerender) {
     }
     tr.insertCell().textContent = missing ? `差 ${missing}` : "可兑现";
   }
-  det.append(table);
-  det.append(button(patternUi.all ? "只显示差 2 张以内的" : `显示全部 ${rows.length} 个 Pattern`, () => {
+  body.append(table);
+  body.append(button(patternUi.all ? "只显示差 2 张以内的" : `显示全部 ${rows.length} 个 Pattern`, () => {
     patternUi.all = !patternUi.all;
     rerender();
   }, false, "ghost small"));
+  det.append(body);
   return det;
 }
 
-function logPanel(log, name) {
-  const det = document.createElement("details");
-  det.className = "panel c-log";
-  det.open = true;
-  det.innerHTML = "<summary>记录</summary>";
+// the log, newest first: player names in bold, Pattern names and money
+// changes in colour, a line between turns
+function logPanel(log, name, patterns) {
+  const box = div("c-log");
+  box.append(span("c-log-title", "记录"));
   const list = div("c-log-list");
-  for (const e of [...log].reverse().slice(0, 80)) list.append(span("", e.msg.replace(/\{P(\d+)\}/g, (_, i) => name(+i))));
-  det.append(list);
-  return det;
+  const names = patterns.map((p) => p.name).sort((a, b) => b.length - a.length)
+    .map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`\\{P(\\d+)\\}|([+-]\\d+) 元|${names.join("|")}`, "g");
+  for (const e of [...log].reverse().slice(0, 150)) {
+    const line = div("c-log-line" + (/的回合：/.test(e.msg) ? " turn" : ""));
+    let at = 0;
+    for (const m of e.msg.matchAll(re)) {
+      line.append(e.msg.slice(at, m.index));
+      if (m[1] != null) line.append(span("c-who", name(+m[1])));
+      else if (m[2] != null) line.append(span(m[2][0] === "+" ? "c-plus" : "c-minus", `${signed(+m[2])} 元`));
+      else line.append(span("c-pat", m[0]));
+      at = m.index + m[0].length;
+    }
+    line.append(e.msg.slice(at));
+    list.append(line);
+  }
+  box.append(list);
+  return box;
 }
 
 function sortCards(ids, card, cityOrder) {
