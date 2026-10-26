@@ -20,6 +20,9 @@ never shown to the other players.
 For the table, ``vars.played`` keeps the cards each player put out since
 their turn began and ``vars.events`` this turn's money changes.
 
+Wording: when A's discard completes B's Pattern, "A 点了 B 的炮" (A pays
+the penalty, B cashes).  The code calls B's side of it 点炮 / dianpao.
+
 Points the rule book leaves open are room options (see ``option_specs``).
 """
 from __future__ import annotations
@@ -97,7 +100,7 @@ class CityExchange(Game):
             {"key": "buy_self", "label": "强买可以买自己的弃牌", "type": "bool", "default": True},
             {"key": "tour_loop", "label": "出游循环询问直到有人不弃牌", "type": "bool", "default": True,
              "help": "关闭后只问一圈，所有人都弃牌则无人付钱"},
-            {"key": "cash_dianpao", "label": "兑现放入弃牌区的牌也可被点炮", "type": "bool", "default": False},
+            {"key": "cash_dianpao", "label": "兑现放入弃牌区的牌也会点炮", "type": "bool", "default": False},
             {"key": "think_time", "label": "长考时间上限（秒，0 为不限）", "type": "int", "default": 0, "min": 0, "max": 3600},
             {"key": "draw_cash_counts", "label": "摸牌阶段直接兑现计入本回合兑现次数", "type": "bool", "default": True},
         ]
@@ -405,9 +408,9 @@ class CityExchange(Game):
         if wait > 0:
             think = self._thinking(st)
             if think and wait == math.inf:
-                raise IllegalAction(f"{P(think['seat'])} 长考中，等 TA 结束才能做点炮以外的操作")
-            who = f"{P(think['seat'])} 长考中" if think else "等待点炮"
-            raise IllegalAction(f"{who}，还要 {math.ceil(wait)} 秒才能做点炮以外的操作")
+                raise IllegalAction(f"{P(think['seat'])} 长考中，等 TA 结束才能做别的操作（现在只能用弃牌兑现）")
+            who = f"{P(think['seat'])} 长考中" if think else "刚有人弃牌"
+            raise IllegalAction(f"{who}，还要 {math.ceil(wait)} 秒才能做别的操作（现在只能用弃牌兑现）")
         self._stop_thinking(st, seat)
         if phase == "draw":
             if kind == "discard":
@@ -649,9 +652,9 @@ class CityExchange(Game):
     def _act_dianpao(self, st, seat, offer_id, choices) -> None:
         offer = next((o for o in st.vars["offers"] if o["id"] == offer_id), None)
         if offer is None or seat not in offer["eligible"] or seat in offer["answered"]:
-            raise IllegalAction("这次点炮机会已经过去了")
+            raise IllegalAction("这次机会已经过去了")
         if not self._dianpao_options(st, seat, offer):
-            raise IllegalAction("已经不能点炮了")
+            raise IllegalAction("已经不能用这张牌兑现了")
         by = offer["by"]
         for o, need in self._choice_allocation(st, seat, offer, choices):
             cards = self._allocate(st, seat, need)
@@ -667,8 +670,8 @@ class CityExchange(Game):
                                     "pattern": pat.id})
             st.vars["events"].append({"type": "dianpao", "seat": seat, "from": by, "card": o["card"],
                                       "pattern": pat.id, "money": [[seat, gain]] + ([[by, -cost]] if cost else [])})
-            st.log(f"{P(seat)} 点炮 {P(by)} 的 {self.card_name(st, o['card'])}，兑现 {pat.name}：{P(seat)} +{gain} 元，"
-                   + (f"{P(by)} -{cost} 元" if cost else "弃牌者不扣钱"))
+            st.log(f"{P(by)} 点了 {P(seat)} 的炮：{P(seat)} 用 {self.card_name(st, o['card'])} 兑现 {pat.name}，"
+                   f"{P(seat)} +{gain} 元，" + (f"{P(by)} -{cost} 元" if cost else "弃牌者不扣钱"))
         # after a 点炮 the player may go again (the same card can complete
         # another Pattern with other hand cards) until they decline or can't
         if not choices:
@@ -769,5 +772,5 @@ class CityExchange(Game):
             return f"弃置 {self.card_name(st, card)}" if isinstance(card, int) and card in st.cards else "付钱"
         if kind == "bid":
             return "当地主" if action.get("take") else "不当地主"
-        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "点炮响应", "give": "交牌",
+        return {"buyback": "回购", "buy": "强买", "end": "结束回合", "dianpao": "用弃牌兑现" if action.get("choices") else "不兑现", "give": "交牌",
                 "think": "长考", "think_end": "结束长考"}.get(kind, str(kind))

@@ -456,7 +456,7 @@ def discard_state(clock, think_time=30):
 
 def test_only_dianpao_in_the_seconds_after_a_discard(clock):
     st = discard_state(clock)
-    with pytest.raises(IllegalAction, match="等待点炮"):
+    with pytest.raises(IllegalAction, match="刚有人弃牌"):
         G.act(st, 0, {"type": "end"})
     clock.t += rules.DISCARD_WAIT - 0.5
     with pytest.raises(IllegalAction):

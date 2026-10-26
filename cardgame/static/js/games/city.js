@@ -274,7 +274,7 @@ export function render(el, ctx) {
     if (hold.think.until === Infinity) status.append(span("c-hold", who));
     else status.append(span("c-hold", who + "，还剩 "), countdown(hold.think.until), span("c-hold", " 秒"));
   } else if (hold.wait) {
-    status.append(span("c-hold", " · 刚弃了牌，点炮时间 "), countdown(hold.wait), span("c-hold", " 秒"));
+    status.append(span("c-hold", " · 刚弃了牌，等待 "), countdown(hold.wait), span("c-hold", " 秒"));
   }
   centre.append(status);
   const events = v.events ?? [];
@@ -303,7 +303,7 @@ export function render(el, ctx) {
     const pat = patternOf[e.pattern];
     const city = (id) => span("c-city", card(id)?.city ?? "?");
     if (e.type === "cash") d.append(nameTag(e.seat), " 兑现 ", patTag(pat));
-    else if (e.type === "dianpao") d.append(nameTag(e.seat), " 点炮 ", nameTag(e.from), " 的 ", city(e.card), "：", patTag(pat));
+    else if (e.type === "dianpao") d.append(nameTag(e.from), " 点了 ", nameTag(e.seat), " 的炮：", city(e.card), " → ", patTag(pat));
     else if (e.type === "buy") d.append(nameTag(e.seat), " 强买 ", nameTag(e.from), " 的 ", city(e.card));
     else if (e.type === "buyback") d.append(nameTag(e.seat), " 回购 ", city(e.card));
     else if (e.type === "fine") d.append(nameTag(e.seat), " 不弃牌，付钱给 ", nameTag(e.to));
@@ -377,8 +377,8 @@ function statusText(ctx, v, prompt, name, claims) {
   if (v.phase === "over") return "游戏结束";
   if (prompt?.type === "dianpao" && !claims.length) prompt = null;  // not shown before 长考
   if (prompt) {
-    if (prompt.type === "dianpao") return "可以点炮！在下方选择要兑现的 Pattern，或者不点炮";
-    const extra = claims.length ? "（另有点炮机会，见下方）" : "";
+    if (prompt.type === "dianpao") return "可以用别人弃的牌兑现！在下方选择 Pattern，或者不兑现";
+    const extra = claims.length ? "（还可以用别人弃的牌兑现，见下方）" : "";
     return {
       draw: "摸牌阶段：点选一张本回合摸到的牌（蓝框）弃置",
       main: "出牌阶段：可以回购、出游、强买、兑现（顺序随意），然后结束回合",
@@ -404,7 +404,7 @@ function thinkButtons(box, ctx, hold) {
     box.append(b);
   } else if (hold.canThink) {
     const b = button(hold.limit ? `长考（${hold.limit} 秒）` : "长考", () => ctx.act({ type: "think" }), false, "ghost");
-    b.title = "长考后才能选择点炮或不点炮；其间其他人只能点炮，直到你不点炮或结束长考"
+    b.title = "长考后才能选择是否用刚弃的牌兑现；其间其他人只能用弃牌兑现，直到你选“不兑现”或结束长考"
       + (hold.limit ? `（最多 ${hold.limit} 秒）` : "");
     box.append(b);
   }
@@ -423,7 +423,7 @@ function buildActions(box, ctx, prompt, claims, rerender, highlight, blocked) {
     const sel = (ui.claims[claim.offer] ??= new Set());
     const row = div("c-claim");
     const cards = claim.cards.map((id) => ctx.view.cards[id].city).join("、");
-    row.append(span("c-claim-title", `点炮！${ctx.seatName(claim.by)} 弃了 ${cards}：`));
+    row.append(span("c-claim-title", `${ctx.seatName(claim.by)} 弃了 ${cards}，可以用它兑现：`));
     claim.options.forEach((o, i) => {
       const on = sel.has(i);
       const b = button(`${on ? "✓ " : ""}${o.name} +${o.gain}` + (o.cost ? `（弃牌者 −${o.cost}）` : ""), () => {
@@ -436,7 +436,7 @@ function buildActions(box, ctx, prompt, claims, rerender, highlight, blocked) {
     // after a 点炮 the options are worked out afresh: start the next pick empty
     row.append(button("兑现所选", () => { act({ type: "dianpao", offer: claim.offer, choices: [...sel] }); sel.clear(); },
       !sel.size));
-    row.append(button("不点炮", () => act({ type: "dianpao", offer: claim.offer, choices: [] }), false, "ghost"));
+    row.append(button("不兑现", () => act({ type: "dianpao", offer: claim.offer, choices: [] }), false, "ghost"));
     box.append(row);
   }
   if (prompt.type === "draw") {
