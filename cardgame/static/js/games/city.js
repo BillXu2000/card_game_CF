@@ -3,8 +3,8 @@
 // the edge (left, top, right), you at the bottom; the cards each player put
 // out since their turn began lie on the table in front of them.  A column on
 // the right holds whose turn it is, this turn's cash / 点炮 / money changes,
-// the deck and the discards, and the log; the map legend and Pattern
-// reference open from its top.
+// the deck and the discards, and the log.  The map legend and the Pattern
+// reference share a panel that opens from a tab on the left edge.
 import { pileEl } from "../cards.js";
 import {
   dropRedrawnHovers, fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
@@ -138,8 +138,9 @@ export function render(el, ctx) {
   felt.append(mapBackground(info, held));
   tableEl = el;
   const surface = div("c-surface");   // the table top; the map is fitted to it
-  const side = div("c-side");         // log, legend, Pattern reference
-  felt.append(surface, side);
+  const side = div("c-side");         // turn, events, piles, log
+  const ref = div("c-ref-slot");      // legend and Pattern reference
+  felt.append(ref, surface, side);
 
   // ---- the other players round the table
   const base = me ?? 0;
@@ -363,16 +364,10 @@ export function render(el, ctx) {
 
   if (v.phase === "over") surface.append(finalBox(v, name));
 
-  // ---- right column: legend and Pattern reference (they open over the
-  // table), the turn, the piles, the log
-  const tools = div("c-tools");
-  const legend = mapLegend();
-  const patterns = patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender);
-  // one of them open at a time
-  legend.ontoggle = () => { if (legend.open && patterns.open) patterns.open = false; };
-  patterns.addEventListener("toggle", () => { if (patterns.open && legend.open) legend.open = false; });
-  tools.append(legend, patterns);
-  side.append(tools, centre, piles, logPanel(view.log, name, info.patterns));
+  // ---- left edge: legend and Pattern reference in one panel (it opens
+  // over the table); right column: the turn, the piles, the log
+  ref.append(refPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender));
+  side.append(centre, piles, logPanel(view.log, name, info.patterns));
 
   fadeOtherCities(focusCities());  // something may still be hovered after a re-render
   fitTarget = [felt, mapArea];
@@ -556,17 +551,27 @@ function finalBox(v, name) {
   return box;
 }
 
+function refPanel(info, myCities, rerender) {
+  const det = document.createElement("details");
+  det.className = "c-ref";
+  det.open = patternUi.open;
+  det.addEventListener("toggle", () => { patternUi.open = det.open; });
+  det.innerHTML = "<summary>图例 · Pattern 速查</summary>";
+  const body = div("c-ref-body");
+  const legend = mapLegend();
+  legend.open = true;   // its own fold is not used here
+  const h = (text) => Object.assign(document.createElement("h4"), { textContent: text });
+  body.append(h("图例"), legend, h("Pattern 速查"), patternPanel(info, myCities, rerender));
+  det.append(body);
+  return det;
+}
+
 function patternPanel(info, myCities, rerender) {
   const provinceOf = {};
   for (const [p, cs] of Object.entries(info.provinces)) for (const c of cs) provinceOf[c] = p;
   const have = {};
   for (const c of myCities) have[c] = (have[c] ?? 0) + 1;
-  const det = document.createElement("details");
-  det.className = "c-patterns";
-  det.open = patternUi.open;
-  det.addEventListener("toggle", () => { patternUi.open = det.open; });
-  det.innerHTML = "<summary>Pattern 速查</summary>";
-  const body = div("c-pop");
+  const body = div("c-patterns");
   body.append(span("c-pop-title", "按还差几张排序"));
   // 四个X (four of one city) are left out: they are obvious from the hand
   const rows = info.patterns.filter((p) => !p.id.startsWith("four:")).map((p) => {
@@ -594,8 +599,7 @@ function patternPanel(info, myCities, rerender) {
     patternUi.all = !patternUi.all;
     rerender();
   }, false, "ghost small"));
-  det.append(body);
-  return det;
+  return body;
 }
 
 // the log, newest first: player names in bold, Pattern names and money

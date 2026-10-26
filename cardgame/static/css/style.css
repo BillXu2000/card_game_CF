@@ -286,7 +286,7 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .city-table {
   position: relative; overflow: hidden; width: 100%;
   border-radius: 14px; border: 6px solid #6b4423; background: #cfe6f5; color: #fff;
-  display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) 320px;
   height: calc(100vh - var(--fit-top, 0px) - 10px); min-height: 640px;
 }
 .cm-bg { position: absolute; inset: 0; z-index: 0; }
@@ -306,7 +306,8 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 /* the cities are fitted into this cell, between the players' boxes and your
    hand; only cards lying in front of the players may cover them */
 .c-maparea { grid-area: centre; position: relative; min-height: 0; }
-.c-maparea .cm-caption { position: absolute; left: 0; top: 0; width: min(340px, 100%); z-index: 3; }
+/* top right: the legend panel opens over the left side */
+.c-maparea .cm-caption { position: absolute; right: 0; top: 0; width: min(340px, 100%); z-index: 3; }
 
 .c-pod { display: flex; flex-direction: column; gap: 8px; min-height: 0; max-width: 400px; width: 100%; }
 .c-pod.c-left { grid-area: left; justify-self: start; }
@@ -451,20 +452,26 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .c-side {
   min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 0;
 }
-.c-tools { display: flex; gap: 6px; }
-.c-tools > details > summary {
-  cursor: pointer; font-weight: 700; font-size: 14px; list-style: none; padding: 4px 12px; border-radius: 8px;
-  background: rgba(255, 255, 255, .92); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.3);
+/* left edge: a tab that opens the legend and Pattern reference over the table */
+.city-table > .c-ref-slot { z-index: 4; }
+.c-ref-slot { position: relative; padding: 10px 0 10px 8px; min-height: 0; }
+.c-ref { height: 100%; }
+.c-ref > summary {
+  writing-mode: vertical-rl; letter-spacing: 2px; cursor: pointer; list-style: none; font-weight: 700; font-size: 14px;
+  padding: 12px 5px; border-radius: 8px; background: rgba(255, 255, 255, .92); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
-.c-tools > details > summary::-webkit-details-marker { display: none; }
-.c-tools > details[open] > summary { background: #ffe27a; }
-.c-tools .cm-legend-box { background: none; padding: 0; box-shadow: none; border-radius: 0; }
-.c-tools .cm-legend-body, .c-pop {
-  position: absolute; right: calc(100% + 4px); top: 10px; max-height: calc(100% - 20px); overflow-y: auto; z-index: 8;
-  background: rgba(255, 255, 255, .96); color: var(--text); border-radius: 10px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+.c-ref > summary::-webkit-details-marker { display: none; }
+.c-ref[open] > summary { background: #ffe27a; }
+.c-ref-body {
+  position: absolute; left: calc(100% + 6px); top: 10px; bottom: 10px; width: 450px; overflow-y: auto;
+  background: rgba(255, 255, 255, .96); color: var(--text); border-radius: 10px; padding: 6px 12px 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
 }
-.c-tools .cm-legend-body { margin-top: 0; width: 250px; }
-.c-pop { width: 560px; }
+.c-ref-body h4 { margin: 6px 0; font-size: 15px; }
+.c-ref .cm-legend-box { background: none; padding: 0; box-shadow: none; border-radius: 0; }
+.c-ref .cm-legend-box > summary { display: none; }
+.c-ref .cm-legend-body { margin-top: 0; }
+.c-ref .cm-legend { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; }
 .c-pop-title { font-size: 12px; color: var(--muted); }
 .c-log {
   flex: 1; min-height: 0; display: flex; flex-direction: column; border-radius: 12px;
@@ -496,7 +503,10 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
   .c-mine { grid-template-columns: 1fr; }
   .c-side { padding: 0 10px 10px; }
   .c-log { max-height: 320px; }
-  .c-tools .cm-legend-body, .c-pop { position: fixed; left: 8px; right: 8px; top: 60px; width: auto; max-height: calc(100vh - 80px); }
+  .c-ref-slot { padding: 10px 10px 0; }
+  .c-ref > summary { writing-mode: horizontal-tb; display: inline-block; padding: 4px 12px; }
+  .c-ref-body { position: static; width: auto; max-height: 70vh; margin-top: 6px; }
+  .c-ref .cm-legend { grid-template-columns: 1fr; }
   .ccard .cc-name { font-size: 13px; }
   .ccard .cc-prov { font-size: 9px; }
   .mcard { font-size: 11px; min-width: 28px; padding: 2px 3px; }
