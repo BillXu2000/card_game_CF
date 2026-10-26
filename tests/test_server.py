@@ -190,6 +190,10 @@ async def test_static_files_are_versioned(tmp_path):
         assert resp.status == 302 and resp.headers["Location"] == prefix + "js/main.js"
         resp = await client.get("/static/js/main.js")
         assert resp.status == 200 and resp.headers["Cache-Control"] == "no-cache"
+        # pages compare it with their own version and reload when it changed
+        ws = WS(await client.ws_connect("/ws"))
+        await ws.send(op="login", username="alice", password="")
+        assert (await ws.expect("login_ok"))["version"] == server.static_version
     finally:
         await client.close()
 

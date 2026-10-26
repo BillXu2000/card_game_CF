@@ -13,7 +13,8 @@ client → server
     close {code}                    chat {code, text}
 
 server → client
-    login_ok {username, token, created}     error {message, op}
+    login_ok {username, token, created, version}    error {message, op}
+        (version: the static files' version; an older page reloads itself)
     lobby {rooms, games}                    room {room}
     room_closed {code}                      history {code, items}
     export {code, state}
@@ -213,7 +214,8 @@ class Server:
 
     async def _logged_in(self, c: Client, name: str, token: str, created: bool) -> None:
         c.user, c.token = name, token
-        await c.send({"op": "login_ok", "username": name, "token": token, "created": created})
+        await c.send({"op": "login_ok", "username": name, "token": token, "created": created,
+                      "version": getattr(self, "static_version", None)})
         await c.send(self.lobby_message())
         self._presence_changed(name)
 

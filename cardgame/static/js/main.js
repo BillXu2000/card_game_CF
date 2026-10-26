@@ -20,6 +20,20 @@ const app = {
 function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function storageSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
 
+// The page's code comes from /static/v/<version>/.  When the server runs a
+// newer version (it was updated while this tab was open), reload once; the
+// token and the room in the URL bring the player straight back.
+const PAGE_VERSION = import.meta.url.match(/\/static\/v\/([0-9a-f]+)\//)?.[1] ?? null;
+function reloadForVersion(version) {
+  if (!version || !PAGE_VERSION || version === PAGE_VERSION) return false;
+  try {
+    if (sessionStorage.getItem("reloaded-for") === version) return false;  // no reload loop
+    sessionStorage.setItem("reloaded-for", version);
+  } catch { return false; }
+  location.reload();
+  return true;
+}
+
 // ------------------------------------------------------------ connection
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -61,8 +75,9 @@ function show(screen) {
 function onMessage(m) {
   switch (m.op) {
     case "login_ok":
-      app.user = m.username;
       storageSet(TOKEN_KEY, m.token);
+      if (reloadForVersion(m.version)) return;
+      app.user = m.username;
       if (m.created) toast(`已注册新用户 ${m.username}`);
       if (app.wantRoom) send({ op: "join", code: app.wantRoom });
       break;
