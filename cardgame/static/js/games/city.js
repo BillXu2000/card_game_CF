@@ -233,36 +233,26 @@ export function render(el, ctx) {
     return m;
   }
 
-  // cards put out since the player's turn began, in groups (a discard, a
-  // cashed Pattern, a 点炮 ...)
+  // cards put out since the player's turn began, all in one box whatever
+  // the reason (discard, tour, cashed or 点炮'd Pattern)
   function playedEl(i) {
     const box = div("c-played");
-    if (v.played?.[i]?.length) {
-      box.append(span("c-played-title", v.turn === i && v.phase !== "over" ? "本回合" : "上一轮事件"));
+    const ids = (v.played?.[i] ?? []).flatMap((g) => g.cards);
+    if (!ids.length) return box;
+    const grp = div("c-group");
+    grp.append(div("c-group-label"));
+    grp.firstChild.textContent = v.turn === i && v.phase !== "over" ? "本回合" : "上一轮事件";
+    const cards = div("c-group-cards");
+    for (const id of ids) {
+      if (!card(id)) { cards.append(back()); continue; }
+      const c = bigCard(card(id));
+      c.classList.add("mid");
+      if (!inDiscards.has(id)) { c.classList.add("gone"); c.title += "\n已被拿走"; }
+      else if (v.window?.cards.includes(id)) c.classList.add("hot");
+      cards.append(c);
     }
-    for (const g of v.played?.[i] ?? []) {
-      const grp = div(`c-group ${g.type}`);
-      const label = div("c-group-label");
-      const pat = patternOf[g.pattern];
-      if (g.type === "discard") label.append("弃置");
-      else if (g.type === "tour") label.append("周游列国 · 弃置");
-      else if (g.type === "cash") label.append("兑现 ", patTag(pat), " ", moneyTag(pat.value));
-      else if (g.type === "dianpao") label.append("点炮 ", nameTag(g.from), " · ", patTag(pat), " ", moneyTag(Math.floor(pat.value * 2 / 3)));
-      grp.append(label);
-      const cards = div("c-group-cards");
-      const ids = g.type === "dianpao" ? [g.card, ...g.cards] : g.cards;
-      for (const id of ids) {
-        if (!card(id)) { cards.append(back()); continue; }
-        const c = bigCard(card(id));
-        c.classList.add("mid");
-        if (id === g.card) { c.classList.add("claimed"); c.title += `\n${name(g.from)} 弃的牌`; }
-        if (!inDiscards.has(id)) { c.classList.add("gone"); c.title += "\n已被拿走"; }
-        else if (v.window?.cards.includes(id)) c.classList.add("hot");
-        cards.append(c);
-      }
-      grp.append(cards);
-      box.append(grp);
-    }
+    grp.append(cards);
+    box.append(grp);
     return box;
   }
 

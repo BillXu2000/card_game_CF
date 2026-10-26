@@ -373,23 +373,16 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 /* cards a player put out since their turn began, on the cloth in front of them */
 .c-played { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .c-played:empty { display: none; }
-.c-played { row-gap: 4px; }
-.c-played-title {
-  flex-basis: 100%; font-size: 13px; font-weight: 700; color: #ffe27a; text-shadow: 0 1px 2px #000, 0 0 4px #000;
-}
 .c-group {
   display: flex; flex-direction: column; gap: 3px; padding: 4px 6px 6px; border-radius: 10px;
   background: rgba(16, 38, 28, .55); border: 2px solid rgba(255,255,255,.25);
 }
-.c-group.cash { border-color: #f5b301; background: rgba(90, 64, 0, .7); }
-.c-group.dianpao { border-color: #ff6b4a; background: rgba(110, 20, 10, .7); }
-.c-group-label { font-size: 13px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 1px #000; }
-.c-group-cards { display: flex; gap: 4px; }
+.c-group-label { font-size: 13px; font-weight: 700; white-space: nowrap; color: #ffe27a; text-shadow: 0 1px 1px #000; }
+.c-group-cards { display: flex; flex-wrap: wrap; gap: 4px; }
 .ccard.mid { width: 50px; height: 70px; }
 .ccard.mid .cc-band { height: 9px; }
 .ccard.mid .cc-name { font-size: 14px; margin-top: 6px; }
 .ccard.mid .cc-prov { font-size: 9px; }
-.ccard.claimed { outline: 3px solid #ff6b4a; outline-offset: 1px; }
 .ccard.hot { box-shadow: 0 0 0 3px #ff9f1a, 0 0 12px #ff9f1a; }
 .ccard.gone { opacity: .45; }
 
