@@ -444,9 +444,9 @@ def test_migrate_state_from_blocking_dianpao_version():
     assert G.prompts(old)[0]["type"] == "main"
 
 
-def discard_state(clock):
+def discard_state(clock, think_time=30):
     """Seat 0 has just discarded 北京, which seat 1 can 点炮; the clock stands still."""
-    st = setup(hands={0: ["北京"], 1: ["北京", "北京", "北京"], 2: ["上海"]})
+    st = setup(hands={0: ["北京"], 1: ["北京", "北京", "北京"], 2: ["上海"]}, options={"think_time": think_time})
     st.vars["phase"] = "draw"
     st.private[0]["drawn"] = list(st.zone("hand:0").cards)
     clock.step = 0
@@ -491,7 +491,7 @@ def test_think_holds_the_others_until_the_thinker_is_done(clock):
 def test_think_runs_out_and_lapses_with_the_turn(clock):
     st = discard_state(clock)
     G.act(st, 1, {"type": "think"})
-    clock.t += rules.THINK_TIME + 0.1
+    clock.t += 30.1
     assert G.view(st, 0)["hold"]["think"] is None
     G.act(st, 0, {"type": "end"})
     with pytest.raises(IllegalAction):
@@ -554,3 +554,34 @@ def test_played_cards_stay_on_the_table_until_the_next_turn():
         decline_offers(st)
         G.act(st, seat, {"type": "end"})
     assert v["turn"] == 0 and v["played"][0] == [] and len(v["played"][1]) == 1
+
+
+def test_think_lasts_while_the_thinker_can_still_dianpao(clock):
+    st = setup(hands={0: ["成都"], 1: ["重庆", "重庆"]})
+    st.vars["phase"] = "draw"
+    st.private[0]["drawn"] = list(st.zone("hand:0").cards)
+    clock.step = 0
+    G.act(st, 0, {"type": "discard", "card": st.zone("hand:0").cards[0]})
+    G.act(st, 1, {"type": "think"})
+    claim = G.prompts(st)[1]["claims"][0]
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": [0]})
+    assert G.view(st, 0)["hold"]["think"]["seat"] == 1     # may 点炮 again: still thinking
+    clock.t += rules.DISCARD_WAIT
+    with pytest.raises(IllegalAction, match="长考中"):
+        G.act(st, 0, {"type": "end"})
+    G.act(st, 1, {"type": "dianpao", "offer": claim["offer"], "choices": []})   # 不点炮
+    assert G.view(st, 0)["hold"]["think"] is None
+    G.act(st, 0, {"type": "end"})
+
+
+def test_think_without_time_limit_by_default(clock):
+    st = discard_state(clock, think_time=0)
+    assert G.view(st, 2)["hold"]["think_time"] == 0
+    G.act(st, 2, {"type": "think"})
+    clock.t += 3600
+    assert G.view(st, 0)["hold"]["think"] == {"seat": 2, "left": None}
+    assert G.blocked_for(st, 0) == float("inf")
+    with pytest.raises(IllegalAction, match="等 TA 结束"):
+        G.act(st, 0, {"type": "end"})
+    G.ai_takes_over(st, 2)                    # an AI never ends it, so it ends here
+    G.act(st, 0, {"type": "end"})

@@ -286,7 +286,7 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .city-table {
   position: relative; overflow: hidden; width: 100%;
   border-radius: 14px; border: 6px solid #6b4423; background: #cfe6f5; color: #fff;
-  display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px;
   height: calc(100vh - var(--fit-top, 0px) - 10px); min-height: 640px;
 }
 .cm-bg { position: absolute; inset: 0; z-index: 0; }
@@ -301,13 +301,21 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 }
 .n3 .c-surface { grid-template-areas: "left centre right" "left centre right" "mine mine mine"; }
 /* the map shows through wherever there is nothing on the table */
-.c-surface, .c-pod, .c-played, .c-mine, .c-mine-col { pointer-events: none; }
-.c-seat, .c-group, .c-centre, .c-hand, .c-actions, .c-surface .score-sheet { pointer-events: auto; }
+.c-surface, .c-pod, .c-played, .c-mine, .c-mine-col, .c-maparea { pointer-events: none; }
+.c-seat, .c-group, .c-hand, .c-actions, .c-surface .score-sheet { pointer-events: auto; }
+/* the cities are fitted into this cell, between the players' boxes and your
+   hand; only cards lying in front of the players may cover them */
+.c-maparea { grid-area: centre; position: relative; min-height: 0; }
+.c-maparea .cm-caption { position: absolute; left: 0; top: 0; width: min(340px, 100%); z-index: 3; }
 
 .c-pod { display: flex; flex-direction: column; gap: 8px; min-height: 0; max-width: 400px; width: 100%; }
 .c-pod.c-left { grid-area: left; justify-self: start; }
 .c-pod.c-right { grid-area: right; justify-self: end; }
-.c-pod.c-top { grid-area: top; justify-self: center; }
+.c-pod.c-top { grid-area: top; justify-self: center; position: relative; }
+/* cards in front of the top player and you lie over the map, not beside it */
+.c-pod.c-top > .c-played { position: absolute; top: calc(100% + 8px); left: 50%; translate: -50% 0; width: max-content; max-width: 160%; z-index: 2; }
+.c-mine-col { position: relative; }
+.c-mine-col > .c-played { position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0; width: max-content; max-width: 100%; z-index: 2; }
 .c-pod.c-left, .c-pod.c-right { overflow-y: auto; scrollbar-width: thin; }
 /* four players: left and right sit halfway down the sides */
 .n4 .c-pod.c-left, .n4 .c-pod.c-right { align-self: center; max-height: 100%; }
@@ -364,6 +372,10 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 /* cards a player put out since their turn began, on the cloth in front of them */
 .c-played { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .c-played:empty { display: none; }
+.c-played { row-gap: 4px; }
+.c-played-title {
+  flex-basis: 100%; font-size: 13px; font-weight: 700; color: #ffe27a; text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
 .c-group {
   display: flex; flex-direction: column; gap: 3px; padding: 4px 6px 6px; border-radius: 10px;
   background: rgba(16, 38, 28, .55); border: 2px solid rgba(255,255,255,.25);
@@ -380,25 +392,27 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .ccard.hot { box-shadow: 0 0 0 3px #ff9f1a, 0 0 12px #ff9f1a; }
 .ccard.gone { opacity: .45; }
 
-/* the middle: whose turn, what happened this turn, deck and discards */
-.c-centre {
-  grid-area: centre; align-self: center; justify-self: center; max-width: 100%;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 10px 16px; border-radius: 16px; background: rgba(16, 38, 28, .84); box-shadow: 0 2px 10px rgba(0,0,0,.35);
+/* right column, under the tools: whose turn, what happened this turn, deck and discards */
+.c-info {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 10px; border-radius: 12px; background: rgba(16, 38, 28, .88); box-shadow: 0 2px 8px rgba(0,0,0,.35);
 }
 .c-turn { font-size: 15px; font-weight: 700; color: #ffe27a; }
-.c-centre .status { font-weight: 600; text-align: center; font-size: 14px; }
-.c-events { display: flex; flex-direction: column; gap: 3px; align-items: center; }
-.c-event { font-size: 14px; text-align: center; opacity: .85; }
-.c-event.latest { font-size: 17px; font-weight: 700; opacity: 1; }
+.c-info .status { font-weight: 600; text-align: center; font-size: 14px; }
+.c-events { display: flex; flex-direction: column; gap: 3px; align-items: center; width: 100%; }
+.c-event { font-size: 13px; text-align: center; opacity: .85; }
+.c-event.latest { font-size: 16px; font-weight: 700; opacity: 1; }
 .c-event.cash.latest, .c-event.dianpao.latest {
-  padding: 3px 12px; border-radius: 10px; animation: event-in .5s ease-out;
+  padding: 3px 10px; border-radius: 10px; animation: event-in .5s ease-out;
 }
 .c-event.cash.latest { background: rgba(245, 179, 1, .25); border: 2px solid #f5b301; }
 .c-event.dianpao.latest { background: rgba(255, 107, 74, .25); border: 2px solid #ff6b4a; }
-@keyframes event-in { from { transform: scale(1.25); } to { transform: scale(1); } }
+@keyframes event-in { from { transform: scale(1.15); } to { transform: scale(1); } }
 .c-event-money { margin-left: 6px; }
-.c-piles { display: flex; gap: 18px; align-items: flex-start; }
+.c-piles {
+  display: flex; gap: 24px; justify-content: center; align-items: flex-start; padding: 8px 10px 6px;
+  border-radius: 12px; background: rgba(16, 38, 28, .7);
+}
 .c-focus { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .c-focus .c-row { justify-content: center; }
 
@@ -452,7 +466,6 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
 .c-tools .cm-legend-body { margin-top: 0; width: 250px; }
 .c-pop { width: 560px; }
 .c-pop-title { font-size: 12px; color: var(--muted); }
-.c-side .cm-caption { position: absolute; left: 0; right: 10px; top: 46px; z-index: 7; }
 .c-log {
   flex: 1; min-height: 0; display: flex; flex-direction: column; border-radius: 12px;
   background: rgba(16, 38, 28, .86); box-shadow: 0 2px 8px rgba(0,0,0,.35);
@@ -478,7 +491,8 @@ pre { background: #f6f8fa; padding: 8px; border-radius: 6px; max-height: 300px; 
   .c-surface { display: flex; flex-direction: column; }
   .c-pod { max-width: none; }
   .c-pod.c-left, .c-pod.c-right { overflow: visible; }
-  .c-centre { align-self: stretch; }
+  .c-maparea { min-height: 320px; }
+  .c-pod.c-top > .c-played, .c-mine-col > .c-played { position: static; translate: none; width: auto; max-width: none; }
   .c-mine { grid-template-columns: 1fr; }
   .c-side { padding: 0 10px 10px; }
   .c-log { max-height: 320px; }

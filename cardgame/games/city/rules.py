@@ -12,8 +12,9 @@ player may 点炮 the same offer again and again (one 成都 can complete
 So that 点炮 is not a race, every discard is followed by DISCARD_WAIT
 seconds in which nobody may do anything but 点炮.  Any player other than the
 discarder (able to 点炮 or not, so it tells nothing) may 长考 once per
-discard: for up to THINK_TIME seconds the others may only 点炮, until the
-thinker claims, declines, acts otherwise or ends the 长考.  Who can 点炮 is
+discard: the others may only 点炮 until the thinker declines, has nothing
+left to claim, acts otherwise or ends the 长考 (or the time limit set in the
+room options, if any, runs out).  (The client shows the 点炮 options only after a 长考.)  Who can 点炮 is
 never shown to the other players.
 
 For the table, ``vars.played`` keeps the cards each player put out since
@@ -23,6 +24,7 @@ Points the rule book leaves open are room options (see ``option_specs``).
 """
 from __future__ import annotations
 
+import math
 import time
 from collections import Counter
 
@@ -35,7 +37,6 @@ BUYBACK_COST = 10
 BUY_PRICE = 4
 TOUR_FINE = 6
 DISCARD_WAIT = 3    # seconds after a discard in which only 点炮 is allowed
-THINK_TIME = 30     # longest 长考
 # 斗地主 mode (rule book 3.2)
 LANDLORD_HAND = 4
 LANDLORD_BONUS = 4
@@ -97,6 +98,7 @@ class CityExchange(Game):
             {"key": "tour_loop", "label": "出游循环询问直到有人不弃牌", "type": "bool", "default": True,
              "help": "关闭后只问一圈，所有人都弃牌则无人付钱"},
             {"key": "cash_dianpao", "label": "兑现放入弃牌区的牌也可被点炮", "type": "bool", "default": False},
+            {"key": "think_time", "label": "长考时间上限（秒，0 为不限）", "type": "int", "default": 0, "min": 0, "max": 3600},
             {"key": "draw_cash_counts", "label": "摸牌阶段直接兑现计入本回合兑现次数", "type": "bool", "default": True},
         ]
 
@@ -136,7 +138,7 @@ class CityExchange(Game):
             next_offer=0,
             window=None,      # the latest discard while it can be 点炮'd, see _open_window
             hold_until=0,     # only 点炮 until then (epoch seconds)
-            think=None,       # {"seat", "until"}: a 长考 in progress
+            think=None,       # {"seat", "until"}: a 长考 in progress (until None: no time limit)
             tour=None,
             cash_count=[0] * n,
             dianpao_count=[0] * n,
@@ -394,13 +396,18 @@ class CityExchange(Game):
         phase = st.vars["phase"]
         kind = action["type"]
         if kind == "dianpao" and phase != "over":
-            self._stop_thinking(st, seat)
-            return self._act_dianpao(st, seat, action.get("offer"), action.get("choices"))
+            self._act_dianpao(st, seat, action.get("offer"), action.get("choices"))
+            # a 长考 lasts while the player may still 点炮 this offer (again)
+            if not any(c["offer"] == action.get("offer") for c in self._claims(st, seat)):
+                self._stop_thinking(st, seat)
+            return
         wait = self.blocked_for(st, seat)
         if wait > 0:
-            think = st.vars["think"]
-            who = f"{P(think['seat'])} 长考中" if think and now() < think["until"] else "等待点炮"
-            raise IllegalAction(f"{who}，还要 {wait:.0f} 秒才能做点炮以外的操作")
+            think = self._thinking(st)
+            if think and wait == math.inf:
+                raise IllegalAction(f"{P(think['seat'])} 长考中，等 TA 结束才能做点炮以外的操作")
+            who = f"{P(think['seat'])} 长考中" if think else "等待点炮"
+            raise IllegalAction(f"{who}，还要 {math.ceil(wait)} 秒才能做点炮以外的操作")
         self._stop_thinking(st, seat)
         if phase == "draw":
             if kind == "discard":
@@ -431,14 +438,19 @@ class CityExchange(Game):
             return
         super().act(st, seat, action)
 
+    def _thinking(self, st: GameState) -> dict | None:
+        """The 长考 in progress, if any."""
+        think = st.vars.get("think")
+        return think if think and (think["until"] is None or now() < think["until"]) else None
+
     def blocked_for(self, st: GameState, seat: int) -> float:
-        """Seconds until ``seat`` may do something other than 点炮."""
-        v = st.vars
+        """Seconds until ``seat`` may do something other than 点炮 (inf while
+        someone else 长考s without a time limit)."""
         t = now()
-        left = v.get("hold_until", 0) - t
-        think = v.get("think")
+        left = st.vars.get("hold_until", 0) - t
+        think = self._thinking(st)
         if think and think["seat"] != seat:
-            left = max(left, think["until"] - t)
+            left = max(left, math.inf if think["until"] is None else think["until"] - t)
         return max(0.0, left)
 
     def can_think(self, st: GameState, seat: int | None) -> bool:
@@ -452,12 +464,13 @@ class CityExchange(Game):
         v = st.vars
         if not self.can_think(st, seat):
             raise IllegalAction("现在不能长考")
-        think = v["think"]
-        if think and think["seat"] != seat and now() < think["until"]:
+        think = self._thinking(st)
+        if think and think["seat"] != seat:
             raise IllegalAction(f"{P(think['seat'])} 正在长考")
         v["window"]["thought"].append(seat)
-        v["think"] = {"seat": seat, "until": now() + THINK_TIME}
-        st.log(f"{P(seat)} 长考（最多 {THINK_TIME} 秒）")
+        limit = st.options.get("think_time", 0)
+        v["think"] = {"seat": seat, "until": now() + limit if limit else None}
+        st.log(f"{P(seat)} 长考" + (f"（最多 {limit} 秒）" if limit else ""))
 
     def _act_think_end(self, st: GameState, seat: int) -> None:
         think = st.vars["think"]
@@ -466,10 +479,10 @@ class CityExchange(Game):
         self._stop_thinking(st, seat)
 
     def _stop_thinking(self, st: GameState, seat: int) -> None:
-        think = st.vars.get("think")
-        if think and think["seat"] == seat:
+        think = self._thinking(st)
+        if st.vars.get("think") and st.vars["think"]["seat"] == seat:
             st.vars["think"] = None
-            if now() < think["until"]:
+            if think:
                 st.log(f"{P(seat)} 结束长考")
 
     # draw phase
@@ -709,16 +722,21 @@ class CityExchange(Game):
         v.pop("next_offer")
         # times as seconds from now, so clocks need not agree
         t = now()
-        think = st.vars.get("think")
+        think = self._thinking(st)
         out["hold"] = {
             "left": max(0.0, st.vars.get("hold_until", 0) - t),
-            "think": {"seat": think["seat"], "left": think["until"] - t}
-            if think and think["until"] > t else None,
+            # left None: no time limit
+            "think": {"seat": think["seat"], "left": None if think["until"] is None else think["until"] - t}
+            if think else None,
             "can_think": self.can_think(st, seat),
+            "think_time": st.options.get("think_time", 0),
         }
         v.pop("hold_until", None)
         v.pop("think", None)
         return out
+
+    def ai_takes_over(self, st: GameState, seat: int) -> None:
+        self._stop_thinking(st, seat)   # the AI never ends a 长考 it did not start
 
     def waiting(self, st: GameState, prompts: dict[int, dict]) -> list[int]:
         # only the normal flow: a pending 点炮 must not show

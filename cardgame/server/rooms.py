@@ -268,6 +268,8 @@ class RoomManager:
         if mode == "ai":
             if s.ai is None:
                 s.user, s.ai = None, self._ai_name(room)
+                if room.state is not None:
+                    room.game.ai_takes_over(room.state, seat)
         elif mode == "empty":
             if room.state is not None:
                 raise RoomError("游戏进行中只能把座位交给 AI")
@@ -429,6 +431,8 @@ class RoomManager:
                          room.game.ai_wait(room.state, s, prompts[s]) + 0.05) for s in seats}
         seat = min(seats, key=lambda s: (delays[s], s))
         delay = delays[seat]
+        if delay == float("inf"):
+            return  # waiting for a player (e.g. an open-ended 长考); their move reschedules
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:

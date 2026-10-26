@@ -97,6 +97,9 @@ class Game:
         unlike ``ai_delay`` not scaled by the AI speed)."""
         return 0.0
 
+    def ai_takes_over(self, st: GameState, seat: int) -> None:
+        """An AI now plays ``seat``: drop anything only a human would finish."""
+
     def waiting(self, st: GameState, prompts: dict[int, dict]) -> list[int]:
         """Seats shown to everybody as having to decide."""
         return sorted(prompts)

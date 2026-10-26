@@ -1,9 +1,10 @@
 // 城市交易所 table, laid out like a card table: the map of China is only the
-// cloth.  The other players sit round the edge (left, top, right), you at the
-// bottom; the cards each player put out since their turn began lie on the
-// table in front of them.  The middle shows whose turn it is, this turn's
-// cash / 点炮 / money changes, the deck and the discards.  The log, map legend
-// and Pattern reference are in a column on the right.
+// cloth, its cities fitted into the free middle.  The other players sit round
+// the edge (left, top, right), you at the bottom; the cards each player put
+// out since their turn began lie on the table in front of them.  A column on
+// the right holds whose turn it is, this turn's cash / 点炮 / money changes,
+// the deck and the discards, and the log; the map legend and Pattern
+// reference open from its top.
 import { pileEl } from "../cards.js";
 import {
   dropRedrawnHovers, fitMap, focusCities, hoverCity, hoverPattern, mapBackground, mapCaption, mapLegend, onFocusChange,
@@ -11,7 +12,6 @@ import {
 
 const PROVINCE_CLASS = { "直辖市": "pv-m", "江苏": "pv-js", "湖北": "pv-hb", "四川": "pv-sc", "广东": "pv-gd" };
 const CAPITALS = new Set(["南京", "武汉", "成都", "广州"]);
-const THINK_SECONDS = 30;
 const POS = { 3: ["bottom", "left", "right"], 4: ["bottom", "left", "top", "right"] };
 const MONEY_FX_MS = 4000;   // how long a money change stays marked at the player
 
@@ -43,12 +43,13 @@ function holdInfo(view, me) {
   if (!viewTime.has(view)) viewTime.set(view, performance.now());
   const h = view.hold;
   const at = viewTime.get(view);
-  const until = (left) => at + left * 1000;
+  const until = (left) => left == null ? Infinity : at + left * 1000;   // null: no time limit
   const wait = h && until(h.left) > performance.now() ? until(h.left) : null;
   const think = h?.think && until(h.think.left) > performance.now() ? { seat: h.think.seat, until: until(h.think.left) } : null;
   // when non-点炮 moves are allowed again, for this player
   const free = Math.max(wait ?? 0, think && think.seat !== me ? think.until : 0);
-  return { wait, think, blocked: free > performance.now(), free, canThink: !!h?.can_think && !(think && think.seat !== me) };
+  return { wait, think, blocked: free > performance.now(), free, limit: h?.think_time ?? 0,
+    canThink: !!h?.can_think && !(think && think.seat !== me) };
 }
 
 function countdown(until) {
@@ -97,11 +98,17 @@ export function render(el, ctx) {
   const hold = holdInfo(view, me);
   lastCtx = ctx;
   clearTimeout(holdTimer);
-  const next = [hold.wait, hold.think?.until].filter((t) => t != null);
+  const next = [hold.wait, hold.think?.until].filter((t) => t != null && t !== Infinity);
   if (next.length) {
     holdTimer = setTimeout(() => { if (lastCtx === ctx) rerender(); }, Math.min(...next) - performance.now() + 30);
   }
   trackMoney(ctx);
+  // 点炮 options appear only once the player has 长考'd on that discard (so
+  // everybody sees the same 长考 button); offers on earlier discards, which
+  // can no longer be 长考'd, show directly
+  const windowCards = new Set(v.window?.cards ?? []);
+  const claims = (prompt?.claims ?? []).filter((c) =>
+    v.window?.thought.includes(me) || !c.cards.some((id) => windowCards.has(id)));
   const name = (i) => ctx.seatName(i);
   const card = (id) => view.cards[id];
   const info = ctx.room.static;
@@ -229,6 +236,9 @@ export function render(el, ctx) {
   // cashed Pattern, a 点炮 ...)
   function playedEl(i) {
     const box = div("c-played");
+    if (v.played?.[i]?.length) {
+      box.append(span("c-played-title", v.turn === i && v.phase !== "over" ? "本回合" : "上一轮事件"));
+    }
     for (const g of v.played?.[i] ?? []) {
       const grp = div(`c-group ${g.type}`);
       const label = div("c-group-label");
@@ -255,17 +265,23 @@ export function render(el, ctx) {
     return box;
   }
 
-  // ---- the middle of the table
-  const centre = div("c-centre");
+  // ---- the cities of the map show in the free middle of the table
+  const mapArea = div("c-maparea");
+  mapArea.append(mapCaption());
+  surface.append(mapArea);
+
+  // ---- turn, status and this turn's events (top of the right column)
+  const centre = div("c-info");
   const turnInfo = div("c-turn");
   turnInfo.textContent = v.phase === "over" ? "游戏结束"
     : v.turn != null ? `第 ${v.turn_no} 回合 · ${name(v.turn)} 的回合` : "";
   centre.append(turnInfo);
   const status = div("status");
-  status.textContent = statusText(ctx, v, prompt, name);
+  status.textContent = statusText(ctx, v, prompt, name, claims);
   if (hold.think) {
-    status.append(span("c-hold", hold.think.seat === me ? " · 你在长考，还剩 " : ` · ${name(hold.think.seat)} 长考中，还剩 `),
-      countdown(hold.think.until), span("c-hold", " 秒"));
+    const who = hold.think.seat === me ? " · 你在长考" : ` · ${name(hold.think.seat)} 长考中`;
+    if (hold.think.until === Infinity) status.append(span("c-hold", who));
+    else status.append(span("c-hold", who + "，还剩 "), countdown(hold.think.until), span("c-hold", " 秒"));
   } else if (hold.wait) {
     status.append(span("c-hold", " · 刚弃了牌，点炮时间 "), countdown(hold.wait), span("c-hold", " 秒"));
   }
@@ -289,8 +305,7 @@ export function render(el, ctx) {
   const last = v.last_discard;
   const lastShown = last && view.cards[last.card] && inDiscards.has(last.card);
   piles.append(discardPile(info, view, v, card, lastShown ? bigCard(card(last.card)) : null));
-  centre.append(piles);
-  surface.append(centre);
+
 
   function eventEl(e, latest) {
     const d = div(`c-event ${e.type}` + (latest ? " latest" : ""));
@@ -342,14 +357,14 @@ export function render(el, ctx) {
       for (const c of hand.querySelectorAll(".card")) c.classList.toggle("hl", ids.has(+c.dataset.id));
     };
     thinkButtons(actions, ctx, hold);
-    buildActions(actions, ctx, prompt, rerender, highlight, hold.blocked);
+    buildActions(actions, ctx, prompt, claims, rerender, highlight, hold.blocked);
     if (actions.childElementCount) col.append(actions);
   }
 
   if (v.phase === "over") surface.append(finalBox(v, name));
 
   // ---- right column: legend and Pattern reference (they open over the
-  // table), what the map is showing, the log
+  // table), the turn, the piles, the log
   const tools = div("c-tools");
   const legend = mapLegend();
   const patterns = patternPanel(info, me != null ? view.zones[`hand:${me}`].cards.map((id) => card(id).city) : [], rerender);
@@ -357,12 +372,12 @@ export function render(el, ctx) {
   legend.ontoggle = () => { if (legend.open && patterns.open) patterns.open = false; };
   patterns.addEventListener("toggle", () => { if (patterns.open && legend.open) legend.open = false; });
   tools.append(legend, patterns);
-  side.append(tools, mapCaption(), logPanel(view.log, name, info.patterns));
+  side.append(tools, centre, piles, logPanel(view.log, name, info.patterns));
 
   fadeOtherCities(focusCities());  // something may still be hovered after a re-render
-  fitTarget = [felt, surface];
+  fitTarget = [felt, mapArea];
   if (resizer) { resizer.disconnect(); resizer.observe(felt); }
-  requestAnimationFrame(() => fitMap(felt, surface));
+  requestAnimationFrame(() => fitMap(felt, mapArea));
 }
 
 function signed(a) {
@@ -373,11 +388,12 @@ function moneyTag(a) {
   return span(a >= 0 ? "c-plus" : "c-minus", `${signed(a)} 元`);
 }
 
-function statusText(ctx, v, prompt, name) {
+function statusText(ctx, v, prompt, name, claims) {
   if (v.phase === "over") return "游戏结束";
+  if (prompt?.type === "dianpao" && !claims.length) prompt = null;  // not shown before 长考
   if (prompt) {
-    if (prompt.type === "dianpao") return "可以点炮！在下方选择要兑现的 Pattern，或者不点";
-    const extra = prompt.claims?.length ? "（另有点炮机会，见下方）" : "";
+    if (prompt.type === "dianpao") return "可以点炮！在下方选择要兑现的 Pattern，或者不点炮";
+    const extra = claims.length ? "（另有点炮机会，见下方）" : "";
     return {
       draw: "摸牌阶段：点选一张本回合摸到的牌（蓝框）弃置",
       main: "出牌阶段：可以回购、出游、强买、兑现（顺序随意），然后结束回合",
@@ -398,18 +414,19 @@ function statusText(ctx, v, prompt, name) {
 // 长考 is offered to everybody but the discarder, able to 点炮 or not
 function thinkButtons(box, ctx, hold) {
   if (hold.think?.seat === ctx.seat) {
-    const b = button("结束长考（", () => ctx.act({ type: "think_end" }), false, "ghost");
-    b.append(countdown(hold.think.until), " 秒）");
+    const b = button("结束长考", () => ctx.act({ type: "think_end" }), false, "ghost");
+    if (hold.think.until !== Infinity) b.append("（", countdown(hold.think.until), " 秒）");
     box.append(b);
   } else if (hold.canThink) {
-    const b = button(`长考（${THINK_SECONDS} 秒）`, () => ctx.act({ type: "think" }), false, "ghost");
-    b.title = `${THINK_SECONDS} 秒内其他人只能点炮，直到你点炮或结束长考`;
+    const b = button(hold.limit ? `长考（${hold.limit} 秒）` : "长考", () => ctx.act({ type: "think" }), false, "ghost");
+    b.title = "长考后才能选择点炮或不点炮；其间其他人只能点炮，直到你不点炮或结束长考"
+      + (hold.limit ? `（最多 ${hold.limit} 秒）` : "");
     box.append(b);
   }
 }
 
 // while only 点炮 is allowed (``blocked``), every other move is greyed out
-function buildActions(box, ctx, prompt, rerender, highlight, blocked) {
+function buildActions(box, ctx, prompt, claims, rerender, highlight, blocked) {
   if (!prompt) return;
   const act = ctx.act;
   const hoverable = (b, pattern) => {
@@ -417,7 +434,7 @@ function buildActions(box, ctx, prompt, rerender, highlight, blocked) {
     b.onmouseleave = () => { highlight(null); hoverPattern(null); };
   };
   // 点炮 offers come first; the rest of the turn goes on independently
-  for (const claim of prompt.claims ?? []) {
+  for (const claim of claims) {
     const sel = (ui.claims[claim.offer] ??= new Set());
     const row = div("c-claim");
     const cards = claim.cards.map((id) => ctx.view.cards[id].city).join("、");
@@ -517,7 +534,7 @@ function discardPile(info, view, v, card, top) {
       total++;
     }
   }
-  return pileEl({ label: "弃牌堆", count: total, rows: cityRows(info, seen), top, title: "弃牌区里的牌", pop: "right" });
+  return pileEl({ label: "弃牌堆", count: total, rows: cityRows(info, seen), top, title: "弃牌区里的牌", pop: "left" });
 }
 
 function finalBox(v, name) {
